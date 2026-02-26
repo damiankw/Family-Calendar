@@ -12,6 +12,19 @@
   const navItems   = document.querySelectorAll('.nav-item');
   const sections   = document.querySelectorAll('.settings-section');
 
+  // ── Mobile sidebar drawer toggle ──
+  const sidebar     = document.getElementById('sidebar');
+  const overlay     = document.getElementById('sidebar-overlay');
+  const hamburger   = document.getElementById('btn-hamburger');
+
+  function openSidebar()  { sidebar.classList.add('open'); overlay.classList.add('open'); }
+  function closeSidebar() { sidebar.classList.remove('open'); overlay.classList.remove('open'); }
+
+  hamburger.addEventListener('click', () => {
+    sidebar.classList.contains('open') ? closeSidebar() : openSidebar();
+  });
+  overlay.addEventListener('click', closeSidebar);
+
   navItems.forEach(item => {
     item.addEventListener('click', () => {
       const target = item.dataset.section;
@@ -22,6 +35,9 @@
       sections.forEach(s => {
         s.classList.toggle('active', s.id === `section-${target}`);
       });
+
+      // Close mobile sidebar after picking
+      closeSidebar();
 
       // Remember active tab across refreshes
       try { localStorage.setItem('admin-tab', target); } catch (_) {}
@@ -218,7 +234,7 @@
     const typeLabel = TYPE_LABELS[cal.type] || cal.type;
     const synced    = timeAgo(cal.last_synced);
     if (cal.type === 'ics' && cal.config?.url) {
-      const url = cal.config.url.length > 45 ? cal.config.url.slice(0, 42) + '…' : cal.config.url;
+      const url = cal.config.url.length > 30 ? cal.config.url.slice(0, 27) + '…' : cal.config.url;
       return `${typeLabel} · ${url} · ${synced}`;
     }
     return `${typeLabel} · ${synced}`;
@@ -677,16 +693,16 @@
           </div>
         </div>
         <div class="card-right">
-          <label class="toggle-switch" title="Enable/disable">
+          <label class="toggle" title="Enable/disable">
             <input type="checkbox" ${r.enabled ? 'checked' : ''}>
-            <span class="toggle-track"></span>
+            <span class="toggle-slider"></span>
           </label>
           <button class="btn-icon-only btn-edit" title="Edit"><i class="fa-solid fa-pen"></i></button>
           <button class="btn-icon-only btn-delete" title="Remove"><i class="fa-solid fa-trash"></i></button>
         </div>
       `;
 
-      card.querySelector('.toggle-switch input').addEventListener('change', async () => {
+      card.querySelector('.toggle input').addEventListener('change', async () => {
         await fetch(`/api/reminders/${r.id}/toggle`, { method: 'PATCH' });
         await loadReminders();
       });

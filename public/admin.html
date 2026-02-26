@@ -13,8 +13,18 @@
 <body>
   <div class="admin-layout">
 
+    <!-- ───────── Mobile top bar ───────── -->
+    <header class="mobile-header">
+      <button class="hamburger" id="btn-hamburger" aria-label="Open menu">
+        <i class="fa-solid fa-bars"></i>
+      </button>
+      <span class="mobile-brand">Wallboard</span>
+      <a href="/" class="mobile-back" title="Back to wallboard"><i class="fa-solid fa-arrow-left"></i></a>
+    </header>
+    <div class="sidebar-overlay" id="sidebar-overlay"></div>
+
     <!-- ───────── Sidebar ───────── -->
-    <nav class="sidebar">
+    <nav class="sidebar" id="sidebar">
       <div class="sidebar-brand">
         <span class="brand-icon"><i class="fa-solid fa-calendar-days"></i></span>
         <span class="brand-text">Wallboard</span>
