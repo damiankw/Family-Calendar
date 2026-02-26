@@ -1,13 +1,19 @@
 // ─── db.js — SQLite schema & helpers ───
 const Database = require('better-sqlite3');
 const path = require('path');
+const fs = require('fs');
 
-const DB_PATH = path.join(__dirname, 'calendar.db');
+const DEFAULT_DB_PATH = path.join(__dirname, 'data', 'calendar.db');
+const DB_PATH = process.env.DB_PATH || DEFAULT_DB_PATH;
 
 let _db;
 
 function getDb() {
   if (!_db) {
+    if (DB_PATH !== ':memory:') {
+      const dbDir = path.dirname(DB_PATH);
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
     _db = new Database(DB_PATH);
     _db.pragma('journal_mode = WAL');   // safe for concurrent reader (server) + writer (worker)
     _db.pragma('busy_timeout = 5000');

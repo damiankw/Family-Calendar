@@ -2,3 +2,7 @@ node_modules/
 calendar.db
 calendar.db-wal
 calendar.db-shm
+data/
+*.db
+*.db-wal
+*.db-shm
