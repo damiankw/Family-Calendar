@@ -5,7 +5,7 @@
 (function () {
   'use strict';
 
-  const REFRESH_MS = 5 * 60 * 1000; // 5 minutes — matches worker interval
+  const REFRESH_MS = 60 * 1000; // 1 minute
 
   // ───────── Clock ─────────
   function updateClock() {
@@ -81,7 +81,8 @@
       // Current weather
       if (current && current.temp != null) {
         document.getElementById('current-temp').textContent = `${Math.round(current.temp)}${tempSymbol}`;
-        document.getElementById('current-icon').textContent = current.icon || '⛅';
+        const iconEl = document.getElementById('current-icon');
+        iconEl.className = `wi weather-icon ${current.icon || 'wi-day-cloudy'}`;
         document.getElementById('wind-speed').textContent   = `${current.wind_speed} ${windLabel} ${current.wind_dir || ''}`.trim();
         document.getElementById('humidity').textContent      = `${current.humidity}%`;
         document.getElementById('sunrise').textContent       = current.sunrise || '';
@@ -94,7 +95,8 @@
           const el = document.getElementById(`forecast-${i}`);
           if (!el) return;
           el.querySelector('.forecast-label').textContent = f.day_label || '';
-          el.querySelector('.forecast-icon').textContent  = f.icon || '';
+          const fIcon = el.querySelector('.forecast-icon');
+          fIcon.className = `wi forecast-icon ${f.icon || 'wi-na'}`;
           el.querySelector('.hi').textContent             = `${Math.round(f.hi)}°`;
           el.querySelector('.lo').textContent             = `${Math.round(f.lo)}°`;
         });

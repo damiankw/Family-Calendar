@@ -83,6 +83,8 @@ html, body {
 
 .weather-icon {
   font-size: 3.5vw;
+  color: rgba(255, 255, 255, 0.85);
+  line-height: 1;
 }
 
 .weather-details {
@@ -103,6 +105,8 @@ html, body {
 
 .detail-icon {
   font-size: 1vw;
+  width: 1.3vw;
+  text-align: center;
 }
 
 /* Forecast */
@@ -134,11 +138,18 @@ html, body {
 
 .forecast-icon {
   font-size: 1.8vw;
+  color: rgba(255, 255, 255, 0.75);
+  line-height: 1;
+  margin-bottom: 0.4vh;
 }
 
 .forecast-temps {
-  font-size: 0.85vw;
+  display: flex;
+  align-items: baseline;
+  gap: 0.3vw;
+  font-size: 0.75vw;
   font-weight: 500;
+  white-space: nowrap;
 }
 
 .forecast-temps .hi {
@@ -147,7 +158,8 @@ html, body {
 
 .forecast-temps .lo {
   color: #8be9fd;
-  margin-left: 0.3vw;
+  font-size: 0.65vw;
+  opacity: 0.7;
 }
 
 /* Events */

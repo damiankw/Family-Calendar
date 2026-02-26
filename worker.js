@@ -20,40 +20,41 @@ async function fetchCalendarEvents() {
 
 // ───────── Weather provider (Open-Meteo — free, no API key) ─────────
 
-// WMO weather codes → emoji mapping
+// WMO weather codes → Weather Icons CSS class mapping
+// See https://erikflowers.github.io/weather-icons/
 const WMO_ICONS = {
-  0:  '☀️',   // Clear sky
-  1:  '🌤️',  // Mainly clear
-  2:  '⛅',   // Partly cloudy
-  3:  '☁️',   // Overcast
-  45: '🌫️',  // Fog
-  48: '🌫️',  // Depositing rime fog
-  51: '🌦️',  // Light drizzle
-  53: '🌦️',  // Moderate drizzle
-  55: '🌧️',  // Dense drizzle
-  56: '🌧️',  // Light freezing drizzle
-  57: '🌧️',  // Dense freezing drizzle
-  61: '🌧️',  // Slight rain
-  63: '🌧️',  // Moderate rain
-  65: '🌧️',  // Heavy rain
-  66: '🌧️',  // Light freezing rain
-  67: '🌧️',  // Heavy freezing rain
-  71: '🌨️',  // Slight snowfall
-  73: '🌨️',  // Moderate snowfall
-  75: '❄️',   // Heavy snowfall
-  77: '🌨️',  // Snow grains
-  80: '🌦️',  // Slight rain showers
-  81: '🌧️',  // Moderate rain showers
-  82: '🌧️',  // Violent rain showers
-  85: '🌨️',  // Slight snow showers
-  86: '🌨️',  // Heavy snow showers
-  95: '⛈️',  // Thunderstorm
-  96: '⛈️',  // Thunderstorm with slight hail
-  99: '⛈️',  // Thunderstorm with heavy hail
+  0:  'wi-day-sunny',          // Clear sky
+  1:  'wi-day-sunny-overcast', // Mainly clear
+  2:  'wi-day-cloudy',         // Partly cloudy
+  3:  'wi-cloudy',             // Overcast
+  45: 'wi-fog',                // Fog
+  48: 'wi-fog',                // Depositing rime fog
+  51: 'wi-sprinkle',           // Light drizzle
+  53: 'wi-sprinkle',           // Moderate drizzle
+  55: 'wi-showers',            // Dense drizzle
+  56: 'wi-rain-mix',           // Light freezing drizzle
+  57: 'wi-rain-mix',           // Dense freezing drizzle
+  61: 'wi-rain',               // Slight rain
+  63: 'wi-rain',               // Moderate rain
+  65: 'wi-rain-wind',          // Heavy rain
+  66: 'wi-rain-mix',           // Light freezing rain
+  67: 'wi-rain-mix',           // Heavy freezing rain
+  71: 'wi-snow',               // Slight snowfall
+  73: 'wi-snow',               // Moderate snowfall
+  75: 'wi-snow-wind',          // Heavy snowfall
+  77: 'wi-sleet',              // Snow grains
+  80: 'wi-day-showers',        // Slight rain showers
+  81: 'wi-showers',            // Moderate rain showers
+  82: 'wi-storm-showers',      // Violent rain showers
+  85: 'wi-day-snow',           // Slight snow showers
+  86: 'wi-snow-wind',          // Heavy snow showers
+  95: 'wi-thunderstorm',       // Thunderstorm
+  96: 'wi-day-snow-thunderstorm', // Thunderstorm with slight hail
+  99: 'wi-thunderstorm',       // Thunderstorm with heavy hail
 };
 
 function wmoIcon(code) {
-  return WMO_ICONS[code] ?? '❓';
+  return WMO_ICONS[code] ?? 'wi-na';
 }
 
 // Convert degrees to compass direction
