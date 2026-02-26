@@ -163,36 +163,57 @@
     }
   }
 
+  const isMobile = () => window.matchMedia('(max-width: 768px)').matches;
+
+  const DAY_NAMES = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+
+  function dayLabel(offset) {
+    if (offset === 0) return 'Today';
+    if (offset === 1) return 'Tomorrow';
+    const d = new Date(); d.setDate(d.getDate() + offset);
+    return DAY_NAMES[d.getDay()];
+  }
+
+  function buildDayGroups(count) {
+    const section = document.getElementById('events-section');
+    section.innerHTML = '';
+    for (let i = 0; i < count; i++) {
+      const group = document.createElement('div');
+      group.className = 'events-group';
+      group.dataset.day = i;
+      group.innerHTML = `
+        <h3 class="events-heading">${dayLabel(i)}</h3>
+        <ul class="events-list" id="events-day-${i}"></ul>
+      `;
+      section.appendChild(group);
+    }
+  }
+
   async function fetchTodayTomorrow() {
+    const numDays = isMobile() ? 7 : 2;
+    buildDayGroups(numDays);
+
     const now = new Date();
-    const todayStr    = dateKey(now.getFullYear(), now.getMonth(), now.getDate());
-    const tom         = new Date(now); tom.setDate(tom.getDate() + 1);
-    const tomorrowStr = dateKey(tom.getFullYear(), tom.getMonth(), tom.getDate());
 
     try {
-      const [todayRes, tomRes] = await Promise.all([
-        fetch(`/api/events/${todayStr}`),
-        fetch(`/api/events/${tomorrowStr}`),
-      ]);
-      const todayEvents = await todayRes.json();
-      const tomEvents   = await tomRes.json();
+      const fetches = [];
+      for (let i = 0; i < numDays; i++) {
+        const d = new Date(now); d.setDate(d.getDate() + i);
+        fetches.push(fetch(`/api/events/${dateKey(d.getFullYear(), d.getMonth(), d.getDate())}`));
+      }
+      const responses = await Promise.all(fetches);
+      const allEvents = await Promise.all(responses.map(r => r.json()));
 
-      // Inject birthdays at the top of each day's list
-      const todayBdays = birthdaysForDate(now.getMonth() + 1, now.getDate());
-      const tomBdays   = birthdaysForDate(tom.getMonth() + 1, tom.getDate());
-
-      // Inject reminders after birthdays
-      const todayRems = remindersForDate(now).map(r => ({
-        time: null, color: r.color, title: r.title, _reminder: true, _icon: r.icon || 'fa-bell'
-      }));
-      const tomRems = remindersForDate(tom).map(r => ({
-        time: null, color: r.color, title: r.title, _icon: r.icon || 'fa-bell', _reminder: true
-      }));
-
-      renderEventsList('events-today', [...todayBdays, ...todayRems, ...todayEvents]);
-      renderEventsList('events-tomorrow', [...tomBdays, ...tomRems, ...tomEvents]);
+      for (let i = 0; i < numDays; i++) {
+        const d = new Date(now); d.setDate(d.getDate() + i);
+        const bdays = birthdaysForDate(d.getMonth() + 1, d.getDate());
+        const rems  = remindersForDate(d).map(r => ({
+          time: null, color: r.color, title: r.title, _reminder: true, _icon: r.icon || 'fa-bell'
+        }));
+        renderEventsList(`events-day-${i}`, [...bdays, ...rems, ...allEvents[i]]);
+      }
     } catch (e) {
-      console.warn('Failed to fetch today/tomorrow events:', e);
+      console.warn('Failed to fetch schedule events:', e);
     }
   }
 
