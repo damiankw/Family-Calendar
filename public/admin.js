@@ -1144,4 +1144,89 @@
     }, 2000);
   });
 
+  // ═══════════════════════════════════════
+  //  BACKUP / RESTORE
+  // ═══════════════════════════════════════
+
+  const backupBtn = document.getElementById('btn-backup-download');
+  const backupStatus = document.getElementById('backup-status');
+  const restoreBtn = document.getElementById('btn-restore');
+  const restoreStatus = document.getElementById('restore-status');
+  const restoreFile = document.getElementById('restore-file');
+
+  function setStatus(el, msg, color) {
+    if (!el) return;
+    el.textContent = msg;
+    el.style.color = color || '#8b8b8b';
+  }
+
+  if (backupBtn) {
+    backupBtn.addEventListener('click', async () => {
+      backupBtn.disabled = true;
+      setStatus(backupStatus, 'Preparing backup…', '#8b8b8b');
+      try {
+        const res = await fetch('/api/backup');
+        if (!res.ok) throw new Error(`Server returned ${res.status}`);
+        const data = await res.json();
+        const json = JSON.stringify(data, null, 2);
+        const blob = new Blob([json], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        const stamp = new Date().toISOString().slice(0, 10);
+        a.href = url;
+        a.download = `wallboard-backup-${stamp}.json`;
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+        URL.revokeObjectURL(url);
+        setStatus(backupStatus, 'Backup downloaded.', '#50fa7b');
+      } catch (e) {
+        setStatus(backupStatus, `Backup failed: ${e.message}`, '#ff5555');
+      }
+      backupBtn.disabled = false;
+      setTimeout(() => setStatus(backupStatus, ''), 4000);
+    });
+  }
+
+  if (restoreBtn) {
+    restoreBtn.addEventListener('click', async () => {
+      const file = restoreFile?.files?.[0];
+      if (!file) {
+        setStatus(restoreStatus, 'Select a backup file first.', '#ff5555');
+        setTimeout(() => setStatus(restoreStatus, ''), 3000);
+        return;
+      }
+
+      const ok = confirm('Restoring will replace all existing data. Continue?');
+      if (!ok) return;
+
+      restoreBtn.disabled = true;
+      setStatus(restoreStatus, 'Restoring…', '#8b8b8b');
+      try {
+        const text = await file.text();
+        const data = JSON.parse(text);
+        const res = await fetch('/api/restore', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(data),
+        });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.error || `Server returned ${res.status}`);
+        }
+
+        await loadCalendars();
+        await loadBirthdays();
+        await loadReminders();
+        await loadWeatherSettings();
+        setStatus(restoreStatus, 'Restore complete.', '#50fa7b');
+      } catch (e) {
+        setStatus(restoreStatus, `Restore failed: ${e.message}`, '#ff5555');
+      }
+
+      restoreBtn.disabled = false;
+      setTimeout(() => setStatus(restoreStatus, ''), 5000);
+    });
+  }
+
 })();

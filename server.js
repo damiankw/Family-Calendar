@@ -6,7 +6,68 @@ const { syncCalendarSource } = require('./sync');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-app.use(express.json());
+app.use(express.json({ limit: '10mb' }));
+app.use(express.urlencoded({ extended: true }));
+
+// ───────── Setup check middleware ─────────
+app.use((req, res, next) => {
+  const setupNeeded = !db.isSetupComplete();
+  req.setupNeeded = setupNeeded;
+  next();
+});
+
+// Redirect to setup if needed (except for setup routes and static assets)
+app.use((req, res, next) => {
+  if (req.setupNeeded && !req.path.startsWith('/api/setup') && !req.path.startsWith('/setup')) {
+    const apiRequest = req.path.startsWith('/api/');
+    if (apiRequest) return res.status(503).json({ error: 'Setup required' });
+    return res.redirect('/setup');
+  }
+  next();
+});
+
+// ───────── Setup API routes ─────────
+app.post('/api/setup/init', (req, res) => {
+  const { username, password, location, lat, lon, tz, calendar_name, calendar_type, calendar_url, calendar_color } = req.body;
+
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+
+  try {
+    // Create admin user
+    db.createUser(username, password);
+
+    // Set weather location
+    db.setSetting('weather_location_name', location || 'Your Location');
+    db.setSetting('weather_lat', String(lat || '-37.8136'));
+    db.setSetting('weather_lon', String(lon || '144.9631'));
+    db.setSetting('weather_tz', tz || 'Australia/Melbourne');
+
+    // Create calendar if provided
+    if (calendar_name && calendar_type) {
+      const config = {};
+      if (calendar_type === 'ics' && calendar_url) {
+        config.url = calendar_url;
+        config.refresh_minutes = 30;
+      }
+      db.createCalendarSource({
+        name: calendar_name,
+        type: calendar_type,
+        color: calendar_color || '#8be9fd',
+        enabled: true,
+        config,
+      });
+    }
+
+    const isFormPost = req.is('application/x-www-form-urlencoded') || req.is('multipart/form-data');
+    if (isFormPost) return res.redirect('/admin');
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Setup error:', e.message);
+    res.status(400).json({ error: e.message });
+  }
+});
 
 // ───────── API routes (read-only from SQLite) ─────────
 
@@ -243,9 +304,33 @@ app.get('/api/geocode', async (req, res) => {
   }
 });
 
+// ───────── Backup / Restore ─────────
+// GET /api/backup — export all data as JSON
+app.get('/api/backup', (_req, res) => {
+  const payload = db.exportAllData();
+  res.setHeader('Content-Disposition', 'attachment; filename="wallboard-backup.json"');
+  res.json(payload);
+});
+
+// POST /api/restore — import data from JSON
+app.post('/api/restore', (req, res) => {
+  try {
+    db.importAllData(req.body);
+    res.json({ ok: true });
+  } catch (e) {
+    console.error('Restore error:', e.message);
+    res.status(400).json({ error: e.message });
+  }
+});
+
 // ───────── Admin panel ─────────
 app.get('/admin', (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// ───────── Setup page ─────────
+app.get('/setup', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'setup.html'));
 });
 
 // ───────── Static files ─────────

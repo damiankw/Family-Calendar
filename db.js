@@ -2,9 +2,9 @@
 const Database = require('better-sqlite3');
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 
-const DEFAULT_DB_PATH = path.join(__dirname, 'data', 'calendar.db');
-const DB_PATH = process.env.DB_PATH || DEFAULT_DB_PATH;
+const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'calendar.db');
 
 let _db;
 
@@ -104,6 +104,13 @@ function initialise(db) {
       enabled       INTEGER DEFAULT 1,
       created_at    TEXT    DEFAULT (datetime('now'))
     );
+
+    CREATE TABLE IF NOT EXISTS users (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      username      TEXT    NOT NULL UNIQUE,
+      password_hash TEXT    NOT NULL,
+      created_at    TEXT    DEFAULT (datetime('now'))
+    );
   `);
 
   // Seed default settings (INSERT OR IGNORE so user changes are preserved)
@@ -117,6 +124,47 @@ function initialise(db) {
 
   // ── Migrations for existing databases ──
   try { db.exec('ALTER TABLE calendar_sources ADD COLUMN last_synced TEXT'); } catch (_) { /* column already exists */ }
+}
+
+// ───────── Password utilities ─────────
+function hashPassword(password) {
+  return crypto.pbkdf2Sync(password, 'calendar-salt', 100000, 64, 'sha256').toString('hex');
+}
+
+function verifyPassword(password, hash) {
+  return hashPassword(password) === hash;
+}
+
+// ───────── Setup helpers ─────────
+function isSetupComplete() {
+  try {
+    const db = getDb();
+    const user = db.prepare('SELECT COUNT(*) AS count FROM users').get();
+    return user && user.count > 0;
+  } catch (_) {
+    return false;
+  }
+}
+
+// ───────── User helpers ─────────
+function createUser(username, password) {
+  const db = getDb();
+  const hash = hashPassword(password);
+  const result = db.prepare(`
+    INSERT INTO users (username, password_hash) VALUES (@username, @hash)
+  `).run({ username, hash });
+  return result.lastInsertRowid;
+}
+
+function getUser(username) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM users WHERE username = ?').get(username) || null;
+}
+
+function verifyUser(username, password) {
+  const user = getUser(username);
+  if (!user) return false;
+  return verifyPassword(password, user.password_hash);
 }
 
 // ───────── Event helpers ─────────
@@ -380,6 +428,167 @@ function close() {
   }
 }
 
+// ───────── Backup / Restore helpers ─────────
+function exportAllData() {
+  const db = getDb();
+  const calendarSources = db.prepare('SELECT * FROM calendar_sources ORDER BY created_at').all()
+    .map(s => ({
+      ...s,
+      config: (() => {
+        try { return JSON.parse(s.config || '{}'); } catch (_) { return {}; }
+      })(),
+      enabled: !!s.enabled,
+    }));
+
+  return {
+    version: 1,
+    exported_at: new Date().toISOString(),
+    tables: {
+      events: db.prepare('SELECT * FROM events ORDER BY date, time').all(),
+      weather_current: db.prepare('SELECT * FROM weather_current WHERE id = 1').get() || null,
+      weather_forecast: db.prepare('SELECT * FROM weather_forecast ORDER BY date').all(),
+      calendar_sources: calendarSources,
+      settings: db.prepare('SELECT * FROM settings ORDER BY key').all(),
+      birthdays: db.prepare('SELECT * FROM birthdays ORDER BY month, day, name').all(),
+      reminders: db.prepare('SELECT * FROM reminders ORDER BY title').all(),
+    },
+  };
+}
+
+function importAllData(payload) {
+  const db = getDb();
+  const tables = payload?.tables || payload || {};
+
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM events').run();
+    db.prepare('DELETE FROM weather_current').run();
+    db.prepare('DELETE FROM weather_forecast').run();
+    db.prepare('DELETE FROM calendar_sources').run();
+    db.prepare('DELETE FROM settings').run();
+    db.prepare('DELETE FROM birthdays').run();
+    db.prepare('DELETE FROM reminders').run();
+
+    const events = tables.events || [];
+    const weatherCurrent = tables.weather_current || null;
+    const weatherForecast = tables.weather_forecast || [];
+    const calendarSources = tables.calendar_sources || [];
+    const settings = tables.settings || [];
+    const birthdays = tables.birthdays || [];
+    const reminders = tables.reminders || [];
+
+    if (weatherCurrent) {
+      db.prepare(`
+        INSERT OR REPLACE INTO weather_current (id, temp, icon, description, wind_speed, wind_dir, humidity, sunrise, sunset, updated_at)
+        VALUES (@id, @temp, @icon, @description, @wind_speed, @wind_dir, @humidity, @sunrise, @sunset, @updated_at)
+      `).run({
+        id: 1,
+        temp: weatherCurrent.temp ?? null,
+        icon: weatherCurrent.icon ?? null,
+        description: weatherCurrent.description ?? null,
+        wind_speed: weatherCurrent.wind_speed ?? null,
+        wind_dir: weatherCurrent.wind_dir ?? null,
+        humidity: weatherCurrent.humidity ?? null,
+        sunrise: weatherCurrent.sunrise ?? null,
+        sunset: weatherCurrent.sunset ?? null,
+        updated_at: weatherCurrent.updated_at || null,
+      });
+    }
+
+    const insertEvent = db.prepare(`
+      INSERT OR REPLACE INTO events (id, date, time, title, color, source, source_id, updated_at)
+      VALUES (@id, @date, @time, @title, @color, @source, @source_id, @updated_at)
+    `);
+    for (const e of events) {
+      insertEvent.run({
+        id: e.id ?? null,
+        date: e.date,
+        time: e.time ?? null,
+        title: e.title,
+        color: e.color ?? '#8be9fd',
+        source: e.source ?? 'manual',
+        source_id: e.source_id ?? null,
+        updated_at: e.updated_at || null,
+      });
+    }
+
+    const insertForecast = db.prepare(`
+      INSERT OR REPLACE INTO weather_forecast (id, date, day_label, icon, hi, lo, updated_at)
+      VALUES (@id, @date, @day_label, @icon, @hi, @lo, @updated_at)
+    `);
+    for (const f of weatherForecast) {
+      insertForecast.run({
+        id: f.id ?? null,
+        date: f.date,
+        day_label: f.day_label ?? null,
+        icon: f.icon ?? null,
+        hi: f.hi ?? null,
+        lo: f.lo ?? null,
+        updated_at: f.updated_at || null,
+      });
+    }
+
+    const insertCalendar = db.prepare(`
+      INSERT OR REPLACE INTO calendar_sources (id, name, type, color, enabled, config, last_synced, created_at, updated_at)
+      VALUES (@id, @name, @type, @color, @enabled, @config, @last_synced, @created_at, @updated_at)
+    `);
+    for (const c of calendarSources) {
+      insertCalendar.run({
+        id: c.id ?? null,
+        name: c.name,
+        type: c.type,
+        color: c.color ?? '#8be9fd',
+        enabled: c.enabled ? 1 : 0,
+        config: typeof c.config === 'string' ? c.config : JSON.stringify(c.config || {}),
+        last_synced: c.last_synced || null,
+        created_at: c.created_at || null,
+        updated_at: c.updated_at || null,
+      });
+    }
+
+    const insertSetting = db.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (@key, @value)');
+    for (const s of settings) {
+      if (!s.key) continue;
+      insertSetting.run({ key: s.key, value: s.value ?? null });
+    }
+
+    const insertBirthday = db.prepare(`
+      INSERT OR REPLACE INTO birthdays (id, name, month, day, year, created_at)
+      VALUES (@id, @name, @month, @day, @year, @created_at)
+    `);
+    for (const b of birthdays) {
+      insertBirthday.run({
+        id: b.id ?? null,
+        name: b.name,
+        month: b.month,
+        day: b.day,
+        year: b.year ?? null,
+        created_at: b.created_at || null,
+      });
+    }
+
+    const insertReminder = db.prepare(`
+      INSERT OR REPLACE INTO reminders (id, title, icon, color, recurrence, day_of_week, day_of_month, start_date, enabled, created_at)
+      VALUES (@id, @title, @icon, @color, @recurrence, @day_of_week, @day_of_month, @start_date, @enabled, @created_at)
+    `);
+    for (const r of reminders) {
+      insertReminder.run({
+        id: r.id ?? null,
+        title: r.title,
+        icon: r.icon ?? 'fa-bell',
+        color: r.color ?? '#ff79c6',
+        recurrence: r.recurrence,
+        day_of_week: r.day_of_week ?? null,
+        day_of_month: r.day_of_month ?? null,
+        start_date: r.start_date ?? null,
+        enabled: r.enabled ? 1 : 0,
+        created_at: r.created_at || null,
+      });
+    }
+  });
+
+  tx();
+}
+
 module.exports = {
   getDb,
   upsertEvent,
@@ -412,4 +621,10 @@ module.exports = {
   updateReminder,
   deleteReminder,
   close,
+  exportAllData,
+  importAllData,
+  isSetupComplete,
+  createUser,
+  getUser,
+  verifyUser,
 };

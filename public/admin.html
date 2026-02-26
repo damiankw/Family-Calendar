@@ -48,6 +48,9 @@
         <li class="nav-item" data-section="workplaces">
           <span class="nav-icon"><i class="fa-solid fa-car"></i></span> Workplaces
         </li>
+        <li class="nav-item" data-section="settings">
+          <span class="nav-icon"><i class="fa-solid fa-gear"></i></span> Settings
+        </li>
       </ul>
       <div class="sidebar-footer">
         <a href="/" class="back-link"><i class="fa-solid fa-arrow-left"></i> Back to wallboard</a>
@@ -537,6 +540,39 @@
             <span class="feature-tag">Live traffic estimates</span>
             <span class="feature-tag">Transit / driving / cycling</span>
             <span class="feature-tag">Morning departure alert</span>
+          </div>
+        </div>
+      </section>
+
+      <!-- ═══════ SETTINGS ═══════ -->
+      <section class="settings-section" id="section-settings">
+        <div class="section-header">
+          <div>
+            <h1>Settings</h1>
+            <p class="section-desc">Backup or restore your wallboard data.</p>
+          </div>
+        </div>
+
+        <div class="settings-card">
+          <div class="form-group">
+            <label class="form-label">Backup</label>
+            <p class="form-hint">Download a full JSON backup of your calendars, events, birthdays, reminders, and settings.</p>
+            <div class="form-actions" style="justify-content:flex-start;">
+              <button class="btn btn-primary" id="btn-backup-download"><i class="fa-solid fa-download"></i> Download Backup</button>
+              <span class="save-status" id="backup-status"></span>
+            </div>
+          </div>
+
+          <div class="divider-text">restore</div>
+
+          <div class="form-group">
+            <label class="form-label" for="restore-file">Restore</label>
+            <input type="file" class="form-input" id="restore-file" accept="application/json">
+            <span class="form-hint">Restoring will replace all existing data in the database.</span>
+          </div>
+          <div class="form-actions" style="justify-content:flex-start;">
+            <button class="btn btn-danger" id="btn-restore"><i class="fa-solid fa-upload"></i> Restore Backup</button>
+            <span class="save-status" id="restore-status"></span>
           </div>
         </div>
       </section>
