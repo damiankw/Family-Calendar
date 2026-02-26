@@ -1,8 +1,11 @@
 // ─── Digital Calendar Wallboard — app.js ───
-// All data is hardcoded / mock for template purposes.
+// Front-end reads everything from the API (backed by SQLite).
+// The worker.js process keeps the DB populated independently.
 
 (function () {
   'use strict';
+
+  const REFRESH_MS = 5 * 60 * 1000; // 5 minutes — matches worker interval
 
   // ───────── Clock ─────────
   function updateClock() {
@@ -26,62 +29,106 @@
   updateClock();
   setInterval(updateClock, 1000);
 
-  // ───────── Mock Events Data ─────────
-  // Keyed by "YYYY-MM-DD" → array of { title, color }
-  const MOCK_EVENTS = {
-    '2026-02-02': [
-      { title: 'Swimming — kids',  color: '#8be9fd' },
-    ],
-    '2026-02-05': [
-      { title: 'Parent-teacher',   color: '#ff5555' },
-      { title: 'Piano — Emma',     color: '#bd93f9' },
-    ],
-    '2026-02-10': [
-      { title: 'Dentist — Mum',    color: '#50fa7b' },
-    ],
-    '2026-02-14': [
-      { title: "Valentine's dinner", color: '#ff79c6' },
-      { title: 'School disco',      color: '#ffb86c' },
-    ],
-    '2026-02-17': [
-      { title: 'Vet — Biscuit',    color: '#f1fa8c' },
-    ],
-    '2026-02-20': [
-      { title: 'Soccer finals',    color: '#50fa7b' },
-      { title: 'Haircuts',         color: '#8be9fd' },
-    ],
-    '2026-02-24': [
-      { title: 'Groceries',        color: '#ffb86c' },
-    ],
-    '2026-02-26': [
-      { title: 'School drop-off',  color: '#ff5555' },
-      { title: 'Dentist — Mum',    color: '#50fa7b' },
-      { title: 'Soccer — Liam',    color: '#8be9fd' },
-    ],
-    '2026-02-27': [
-      { title: 'Grocery shop',     color: '#ffb86c' },
-      { title: 'Play date — Emma', color: '#bd93f9' },
-    ],
-    '2026-02-28': [
-      { title: 'Family BBQ',       color: '#ff79c6' },
-    ],
-    '2026-03-02': [
-      { title: 'Swimming — kids',  color: '#8be9fd' },
-    ],
-    '2026-03-05': [
-      { title: 'Book club — Dad',  color: '#f1fa8c' },
-    ],
-    '2026-03-07': [
-      { title: 'Birthday — Nana',  color: '#ff79c6' },
-      { title: 'Cake pickup',      color: '#ffb86c' },
-    ],
-    '2026-03-12': [
-      { title: 'School photos',    color: '#bd93f9' },
-    ],
-    '2026-03-14': [
-      { title: 'Soccer semis',     color: '#50fa7b' },
-    ],
-  };
+  // ───────── Data cache (populated from API) ─────────
+  // Keyed by "YYYY-MM-DD" → array of { title, color, time }
+  let eventsMap = {};
+
+  // ───────── Fetch helpers ─────────
+  async function fetchEvents() {
+    const now   = new Date();
+    const year  = now.getFullYear();
+    const month = now.getMonth() + 1; // 1-based
+    try {
+      const res  = await fetch(`/api/events?year=${year}&month=${month}&includeNext=1`);
+      const rows = await res.json();
+      // Group by date
+      eventsMap = {};
+      for (const row of rows) {
+        if (!eventsMap[row.date]) eventsMap[row.date] = [];
+        eventsMap[row.date].push({ title: row.title, color: row.color, time: row.time });
+      }
+    } catch (e) {
+      console.warn('Failed to fetch events:', e);
+    }
+  }
+
+  async function fetchWeather() {
+    try {
+      const [curRes, fcRes] = await Promise.all([
+        fetch('/api/weather/current'),
+        fetch('/api/weather/forecast'),
+      ]);
+      const current  = await curRes.json();
+      const forecast = await fcRes.json();
+
+      // Current weather
+      if (current && current.temp != null) {
+        document.getElementById('current-temp').textContent = `${Math.round(current.temp)}°`;
+        document.getElementById('current-icon').textContent = current.icon || '⛅';
+        document.getElementById('wind-speed').textContent   = `${current.wind_speed} m/s ${current.wind_dir || ''}`.trim();
+        document.getElementById('humidity').textContent      = `${current.humidity}%`;
+        document.getElementById('sunrise').textContent       = current.sunrise || '';
+        document.getElementById('sunset').textContent        = current.sunset || '';
+      }
+
+      // Forecast
+      if (forecast && forecast.length) {
+        forecast.forEach((f, i) => {
+          const el = document.getElementById(`forecast-${i}`);
+          if (!el) return;
+          el.querySelector('.forecast-label').textContent = f.day_label || '';
+          el.querySelector('.forecast-icon').textContent  = f.icon || '';
+          el.querySelector('.hi').textContent             = Math.round(f.hi);
+          el.querySelector('.lo').textContent             = Math.round(f.lo);
+        });
+      }
+    } catch (e) {
+      console.warn('Failed to fetch weather:', e);
+    }
+  }
+
+  async function fetchTodayTomorrow() {
+    const now = new Date();
+    const todayStr    = dateKey(now.getFullYear(), now.getMonth(), now.getDate());
+    const tom         = new Date(now); tom.setDate(tom.getDate() + 1);
+    const tomorrowStr = dateKey(tom.getFullYear(), tom.getMonth(), tom.getDate());
+
+    try {
+      const [todayRes, tomRes] = await Promise.all([
+        fetch(`/api/events/${todayStr}`),
+        fetch(`/api/events/${tomorrowStr}`),
+      ]);
+      const todayEvents = await todayRes.json();
+      const tomEvents   = await tomRes.json();
+
+      renderEventsList('events-today', todayEvents);
+      renderEventsList('events-tomorrow', tomEvents);
+    } catch (e) {
+      console.warn('Failed to fetch today/tomorrow events:', e);
+    }
+  }
+
+  function renderEventsList(elementId, events) {
+    const ul = document.getElementById(elementId);
+    ul.innerHTML = '';
+    if (!events.length) {
+      const li = document.createElement('li');
+      li.className = 'event';
+      li.innerHTML = '<span class="event-title" style="opacity:0.35">Nothing scheduled</span>';
+      ul.appendChild(li);
+      return;
+    }
+    for (const ev of events) {
+      const li = document.createElement('li');
+      li.className = 'event';
+      li.innerHTML = `
+        <span class="event-time">${ev.time || ''}</span>
+        <span class="event-dot" style="background:${ev.color || '#8be9fd'}"></span>
+        <span class="event-title">${ev.title}</span>
+      `;
+      ul.appendChild(li);
+    }
+  }
 
   // Max events to show per cell before "+N more"
   const MAX_VISIBLE_EVENTS = 3;
@@ -106,7 +153,7 @@
     eventsDiv.className = 'day-events';
 
     const key = dateKey(year, month, day);
-    const events = MOCK_EVENTS[key] || [];
+    const events = eventsMap[key] || [];
 
     const visible = events.slice(0, MAX_VISIBLE_EVENTS);
     const remaining = events.length - visible.length;
@@ -195,7 +242,6 @@
     const extraRows   = Math.max(0, 6 - currentRows);
 
     if (extraRows > 0 && nextDayStart <= daysInNext) {
-      // Month separator label
       const label = document.createElement('div');
       label.className = 'month-label';
       label.textContent = nextMonthName;
@@ -219,20 +265,15 @@
     }
   }
 
-  buildCalendar();
-
-  // Rebuild calendar at midnight
-  function msUntilMidnight() {
-    const now = new Date();
-    const midnight = new Date(now);
-    midnight.setHours(24, 0, 0, 0);
-    return midnight - now;
+  // ───────── Refresh cycle ─────────
+  async function refreshAll() {
+    await Promise.all([fetchEvents(), fetchWeather()]);
+    buildCalendar();
+    await fetchTodayTomorrow();
   }
 
-  setTimeout(function rebuildAtMidnight() {
-    buildCalendar();
-    updateClock();
-    setTimeout(rebuildAtMidnight, msUntilMidnight());
-  }, msUntilMidnight());
+  // Initial load + recurring refresh
+  refreshAll();
+  setInterval(refreshAll, REFRESH_MS);
 
 })();

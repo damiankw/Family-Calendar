@@ -1,0 +1,4 @@
+node_modules/
+calendar.db
+calendar.db-wal
+calendar.db-shm
