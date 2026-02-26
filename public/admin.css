@@ -298,6 +298,21 @@ html, body {
   color: rgba(255,255,255,0.35);
 }
 
+.badge-error {
+  background: rgba(255, 85, 85, 0.12);
+  color: #ff5555;
+}
+
+/* Sync button spin animation */
+.btn-sync.spinning span {
+  display: inline-block;
+  animation: spin 0.8s linear infinite;
+}
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
 /* Toggle switch */
 .toggle {
   position: relative;
@@ -755,6 +770,27 @@ html, body {
 }
 .search-no-results:hover {
   background: transparent !important;
+}
+
+/* ===== Empty state ===== */
+.empty-state {
+  text-align: center;
+  padding: 60px 40px;
+  background: rgba(255,255,255,0.02);
+  border: 1px dashed rgba(255,255,255,0.08);
+  border-radius: 12px;
+  color: rgba(255,255,255,0.5);
+}
+
+.empty-icon {
+  font-size: 40px;
+  display: block;
+  margin-bottom: 12px;
+}
+
+.empty-state p {
+  font-size: 14px;
+  line-height: 1.6;
 }
 
 /* ===== Coming soon cards ===== */

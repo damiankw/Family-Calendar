@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const db = require('./db');
+const { syncCalendarSource } = require('./sync');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -44,6 +45,74 @@ app.get('/api/weather/forecast', (_req, res) => {
 });
 
 // ───────── Settings API ─────────
+
+// ── Calendar sources CRUD ──
+
+// GET /api/calendars — list all calendar sources
+app.get('/api/calendars', (_req, res) => {
+  const sources = db.getAllCalendarSources().map(s => ({
+    ...s,
+    config: JSON.parse(s.config || '{}'),
+    enabled: !!s.enabled,
+  }));
+  res.json(sources);
+});
+
+// POST /api/calendars — create a new calendar source
+app.post('/api/calendars', (req, res) => {
+  const { name, type, color, enabled, config } = req.body;
+  if (!name || !type) return res.status(400).json({ error: 'name and type are required' });
+  const id = db.createCalendarSource({ name, type, color, enabled, config });
+  const created = db.getCalendarSource(id);
+  res.status(201).json({ ...created, config: JSON.parse(created.config || '{}'), enabled: !!created.enabled });
+});
+
+// PUT /api/calendars/:id — update a calendar source
+app.put('/api/calendars/:id', (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const existing = db.getCalendarSource(id);
+  if (!existing) return res.status(404).json({ error: 'Calendar not found' });
+
+  db.updateCalendarSource(id, req.body);
+  const updated = db.getCalendarSource(id);
+  res.json({ ...updated, config: JSON.parse(updated.config || '{}'), enabled: !!updated.enabled });
+});
+
+// PATCH /api/calendars/:id/toggle — quick enable/disable toggle
+app.patch('/api/calendars/:id/toggle', (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const existing = db.getCalendarSource(id);
+  if (!existing) return res.status(404).json({ error: 'Calendar not found' });
+
+  const newEnabled = !existing.enabled;
+  db.updateCalendarSource(id, { enabled: newEnabled });
+  res.json({ id, enabled: newEnabled });
+});
+
+// DELETE /api/calendars/:id — delete a calendar source + its events
+app.delete('/api/calendars/:id', (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const existing = db.getCalendarSource(id);
+  if (!existing) return res.status(404).json({ error: 'Calendar not found' });
+
+  db.deleteCalendarSource(id);
+  res.json({ ok: true, id });
+});
+
+// POST /api/calendars/:id/sync — on-demand sync for a single calendar
+app.post('/api/calendars/:id/sync', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const existing = db.getCalendarSource(id);
+  if (!existing) return res.status(404).json({ error: 'Calendar not found' });
+
+  try {
+    const count = await syncCalendarSource(id);
+    res.json({ ok: true, id, events: count });
+  } catch (e) {
+    console.error(`Sync error (cal ${id}):`, e.message);
+    res.status(500).json({ error: e.message });
+  }
+});
 
 // GET /api/settings/weather — return all weather-related settings
 app.get('/api/settings/weather', (_req, res) => {

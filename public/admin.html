@@ -58,89 +58,13 @@
           </button>
         </div>
 
-        <!-- Calendar list -->
+        <!-- Calendar list (populated from API) -->
         <div class="card-list" id="calendar-list">
-
-          <!-- Example: Google Calendar -->
-          <div class="card" data-id="cal-1">
-            <div class="card-left">
-              <span class="cal-color-dot" style="background: #4285F4"></span>
-              <div class="card-info">
-                <span class="card-title">Family (Google)</span>
-                <span class="card-subtitle">Google Calendar · damian@gmail.com</span>
-              </div>
-            </div>
-            <div class="card-right">
-              <span class="badge badge-connected">Connected</span>
-              <label class="toggle">
-                <input type="checkbox" checked>
-                <span class="toggle-slider"></span>
-              </label>
-              <button class="btn-icon-only btn-edit" title="Edit"><span>✏️</span></button>
-              <button class="btn-icon-only btn-delete" title="Remove"><span>🗑️</span></button>
-            </div>
-          </div>
-
-          <!-- Example: Microsoft Exchange -->
-          <div class="card" data-id="cal-2">
-            <div class="card-left">
-              <span class="cal-color-dot" style="background: #ff5555"></span>
-              <div class="card-info">
-                <span class="card-title">Work (Exchange)</span>
-                <span class="card-subtitle">Microsoft 365 · damian@company.com</span>
-              </div>
-            </div>
-            <div class="card-right">
-              <span class="badge badge-connected">Connected</span>
-              <label class="toggle">
-                <input type="checkbox" checked>
-                <span class="toggle-slider"></span>
-              </label>
-              <button class="btn-icon-only btn-edit" title="Edit"><span>✏️</span></button>
-              <button class="btn-icon-only btn-delete" title="Remove"><span>🗑️</span></button>
-            </div>
-          </div>
-
-          <!-- Example: ICS URL -->
-          <div class="card" data-id="cal-3">
-            <div class="card-left">
-              <span class="cal-color-dot" style="background: #50fa7b"></span>
-              <div class="card-info">
-                <span class="card-title">School Calendar</span>
-                <span class="card-subtitle">ICS URL · https://school.example.com/cal.ics</span>
-              </div>
-            </div>
-            <div class="card-right">
-              <span class="badge badge-connected">Connected</span>
-              <label class="toggle">
-                <input type="checkbox" checked>
-                <span class="toggle-slider"></span>
-              </label>
-              <button class="btn-icon-only btn-edit" title="Edit"><span>✏️</span></button>
-              <button class="btn-icon-only btn-delete" title="Remove"><span>🗑️</span></button>
-            </div>
-          </div>
-
-          <!-- Example: Disabled calendar -->
-          <div class="card card-disabled" data-id="cal-4">
-            <div class="card-left">
-              <span class="cal-color-dot" style="background: #bd93f9"></span>
-              <div class="card-info">
-                <span class="card-title">Kids' Sports</span>
-                <span class="card-subtitle">ICS URL · https://sports.example.com/fixtures.ics</span>
-              </div>
-            </div>
-            <div class="card-right">
-              <span class="badge badge-disabled">Disabled</span>
-              <label class="toggle">
-                <input type="checkbox">
-                <span class="toggle-slider"></span>
-              </label>
-              <button class="btn-icon-only btn-edit" title="Edit"><span>✏️</span></button>
-              <button class="btn-icon-only btn-delete" title="Remove"><span>🗑️</span></button>
-            </div>
-          </div>
-
+          <!-- Cards rendered dynamically by admin.js -->
+        </div>
+        <div class="empty-state" id="calendar-empty" style="display:none">
+          <span class="empty-icon">📭</span>
+          <p>No calendars configured yet. Click <strong>Add Calendar</strong> to get started.</p>
         </div>
       </section>
 

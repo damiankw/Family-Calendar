@@ -3,52 +3,19 @@
 // and writes into SQLite. The web server reads from the same DB independently.
 
 const db = require('./db');
+const { syncAllCalendars } = require('./sync');
 
 const INTERVAL_MS = 5 * 60 * 1000; // 5 minutes
 
 // ═══════════════════════════════════════════════════════════════
 //  PROVIDERS — each one fetches data and writes it to SQLite.
-//  Replace the stub implementations with real API calls.
 // ═══════════════════════════════════════════════════════════════
 
 // ───────── Calendar provider ─────────
-// TODO: Wire up to Google Calendar, Outlook, iCal URL, etc.
 async function fetchCalendarEvents() {
   console.log('[worker] Fetching calendar events …');
-
-  // ── STUB: hardcoded family events ──
-  // When you wire this up, delete everything below and replace with
-  // real API calls that return the same shape: { date, time, title, color, source, source_id }
-  const stubEvents = [
-    { date: '2026-02-02', time: '09:00', title: 'Swimming — kids',     color: '#8be9fd', source: 'stub', source_id: 'stub-1'  },
-    { date: '2026-02-05', time: '15:30', title: 'Parent-teacher',      color: '#ff5555', source: 'stub', source_id: 'stub-2'  },
-    { date: '2026-02-05', time: '16:30', title: 'Piano — Emma',        color: '#bd93f9', source: 'stub', source_id: 'stub-3'  },
-    { date: '2026-02-10', time: '10:00', title: 'Dentist — Mum',       color: '#50fa7b', source: 'stub', source_id: 'stub-4'  },
-    { date: '2026-02-14', time: '18:00', title: "Valentine's dinner",   color: '#ff79c6', source: 'stub', source_id: 'stub-5'  },
-    { date: '2026-02-14', time: '17:00', title: 'School disco',        color: '#ffb86c', source: 'stub', source_id: 'stub-6'  },
-    { date: '2026-02-17', time: '11:00', title: 'Vet — Biscuit',       color: '#f1fa8c', source: 'stub', source_id: 'stub-7'  },
-    { date: '2026-02-20', time: '14:00', title: 'Soccer finals',       color: '#50fa7b', source: 'stub', source_id: 'stub-8'  },
-    { date: '2026-02-20', time: '09:00', title: 'Haircuts',            color: '#8be9fd', source: 'stub', source_id: 'stub-9'  },
-    { date: '2026-02-24', time: '10:00', title: 'Groceries',           color: '#ffb86c', source: 'stub', source_id: 'stub-10' },
-    { date: '2026-02-26', time: '08:30', title: 'School drop-off',     color: '#ff5555', source: 'stub', source_id: 'stub-11' },
-    { date: '2026-02-26', time: '10:00', title: 'Dentist — Mum',       color: '#50fa7b', source: 'stub', source_id: 'stub-12' },
-    { date: '2026-02-26', time: '18:00', title: 'Soccer — Liam',       color: '#8be9fd', source: 'stub', source_id: 'stub-13' },
-    { date: '2026-02-27', time: '09:00', title: 'Grocery shop',        color: '#ffb86c', source: 'stub', source_id: 'stub-14' },
-    { date: '2026-02-27', time: '14:00', title: 'Play date — Emma',    color: '#bd93f9', source: 'stub', source_id: 'stub-15' },
-    { date: '2026-02-28', time: '12:00', title: 'Family BBQ',          color: '#ff79c6', source: 'stub', source_id: 'stub-16' },
-    { date: '2026-03-02', time: '09:00', title: 'Swimming — kids',     color: '#8be9fd', source: 'stub', source_id: 'stub-17' },
-    { date: '2026-03-05', time: '19:30', title: 'Book club — Dad',     color: '#f1fa8c', source: 'stub', source_id: 'stub-18' },
-    { date: '2026-03-07', time: '14:00', title: 'Birthday — Nana',     color: '#ff79c6', source: 'stub', source_id: 'stub-19' },
-    { date: '2026-03-07', time: '10:00', title: 'Cake pickup',         color: '#ffb86c', source: 'stub', source_id: 'stub-20' },
-    { date: '2026-03-12', time: '09:00', title: 'School photos',       color: '#bd93f9', source: 'stub', source_id: 'stub-21' },
-    { date: '2026-03-14', time: '14:00', title: 'Soccer semis',        color: '#50fa7b', source: 'stub', source_id: 'stub-22' },
-  ];
-
-  for (const ev of stubEvents) {
-    db.upsertEvent(ev);
-  }
-
-  console.log(`[worker]   → ${stubEvents.length} events written`);
+  const result = await syncAllCalendars();
+  console.log(`[worker]   → ${result.events} events synced from ${result.sources} source(s)`);
 }
 
 // ───────── Weather provider (Open-Meteo — free, no API key) ─────────

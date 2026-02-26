@@ -58,6 +58,17 @@ function initialise(db) {
 
     CREATE UNIQUE INDEX IF NOT EXISTS idx_forecast_date ON weather_forecast(date);
 
+    CREATE TABLE IF NOT EXISTS calendar_sources (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      name          TEXT    NOT NULL,
+      type          TEXT    NOT NULL,          -- 'google', 'microsoft', 'ics'
+      color         TEXT    DEFAULT '#8be9fd',
+      enabled       INTEGER DEFAULT 1,         -- 0 = disabled, 1 = enabled
+      config        TEXT    DEFAULT '{}',      -- JSON: ics_url, refresh_minutes, etc.
+      created_at    TEXT    DEFAULT (datetime('now')),
+      updated_at    TEXT    DEFAULT (datetime('now'))
+    );
+
     CREATE TABLE IF NOT EXISTS settings (
       key           TEXT PRIMARY KEY,
       value         TEXT
@@ -93,12 +104,24 @@ function upsertEvent({ date, time, title, color, source, source_id }) {
 function getEventsByMonth(year, month) {
   const db = getDb();
   const prefix = `${year}-${String(month).padStart(2, '0')}`;
-  return db.prepare('SELECT * FROM events WHERE date LIKE ? ORDER BY date, time').all(`${prefix}%`);
+  return db.prepare(`
+    SELECT e.* FROM events e
+    LEFT JOIN calendar_sources cs ON cs.id = CAST(REPLACE(e.source, 'cal-', '') AS INTEGER)
+    WHERE e.date LIKE ?
+      AND (cs.id IS NULL OR cs.enabled = 1)
+    ORDER BY e.date, e.time
+  `).all(`${prefix}%`);
 }
 
 function getEventsByDate(date) {
   const db = getDb();
-  return db.prepare('SELECT * FROM events WHERE date = ? ORDER BY time').all(date);
+  return db.prepare(`
+    SELECT e.* FROM events e
+    LEFT JOIN calendar_sources cs ON cs.id = CAST(REPLACE(e.source, 'cal-', '') AS INTEGER)
+    WHERE e.date = ?
+      AND (cs.id IS NULL OR cs.enabled = 1)
+    ORDER BY e.time
+  `).all(date);
 }
 
 // ───────── Weather helpers ─────────
@@ -144,6 +167,74 @@ function getForecast() {
   return db.prepare('SELECT * FROM weather_forecast ORDER BY date LIMIT 5').all();
 }
 
+// ───────── Calendar source helpers ─────────
+function getAllCalendarSources() {
+  const db = getDb();
+  return db.prepare('SELECT * FROM calendar_sources ORDER BY created_at').all();
+}
+
+function getEnabledCalendarSources() {
+  const db = getDb();
+  return db.prepare('SELECT * FROM calendar_sources WHERE enabled = 1 ORDER BY created_at').all();
+}
+
+function getCalendarSource(id) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM calendar_sources WHERE id = ?').get(id) || null;
+}
+
+function createCalendarSource({ name, type, color, enabled, config }) {
+  const db = getDb();
+  const result = db.prepare(`
+    INSERT INTO calendar_sources (name, type, color, enabled, config)
+    VALUES (@name, @type, @color, @enabled, @config)
+  `).run({
+    name,
+    type,
+    color: color || '#8be9fd',
+    enabled: enabled != null ? (enabled ? 1 : 0) : 1,
+    config: typeof config === 'string' ? config : JSON.stringify(config || {}),
+  });
+  return result.lastInsertRowid;
+}
+
+function updateCalendarSource(id, { name, type, color, enabled, config }) {
+  const db = getDb();
+  const fields = [];
+  const params = { id };
+
+  if (name != null)    { fields.push('name = @name');       params.name = name; }
+  if (type != null)    { fields.push('type = @type');       params.type = type; }
+  if (color != null)   { fields.push('color = @color');     params.color = color; }
+  if (enabled != null) { fields.push('enabled = @enabled'); params.enabled = enabled ? 1 : 0; }
+  if (config != null)  { fields.push('config = @config');   params.config = typeof config === 'string' ? config : JSON.stringify(config); }
+
+  if (!fields.length) return;
+  fields.push("updated_at = datetime('now')");
+  db.prepare(`UPDATE calendar_sources SET ${fields.join(', ')} WHERE id = @id`).run(params);
+
+  // Propagate color change to existing events from this source
+  if (color != null) {
+    db.prepare('UPDATE events SET color = ? WHERE source = ?').run(color, `cal-${id}`);
+  }
+}
+
+function deleteCalendarSource(id) {
+  const db = getDb();
+  // Get the source info to build the matching source string
+  const src = db.prepare('SELECT * FROM calendar_sources WHERE id = ?').get(id);
+  if (src) {
+    // Remove all events that came from this calendar source
+    db.prepare('DELETE FROM events WHERE source = ?').run(`cal-${id}`);
+  }
+  db.prepare('DELETE FROM calendar_sources WHERE id = ?').run(id);
+}
+
+function deleteEventsBySource(source) {
+  const db = getDb();
+  db.prepare('DELETE FROM events WHERE source = ?').run(source);
+}
+
 // ───────── Settings helpers ─────────
 function getSetting(key) {
   const db = getDb();
@@ -169,10 +260,17 @@ module.exports = {
   upsertEvent,
   getEventsByMonth,
   getEventsByDate,
+  deleteEventsBySource,
   upsertCurrentWeather,
   getCurrentWeather,
   upsertForecastDay,
   getForecast,
+  getAllCalendarSources,
+  getEnabledCalendarSources,
+  getCalendarSource,
+  createCalendarSource,
+  updateCalendarSource,
+  deleteCalendarSource,
   getSetting,
   setSetting,
   close,

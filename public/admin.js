@@ -1,6 +1,6 @@
 // ─── admin.js — Settings panel UI interactions ───
-// Handles navigation, modals, type switching, colour picking.
-// No backend integration yet — just UI behaviour.
+// Calendars: full CRUD wired to /api/calendars
+// Weather: full settings wired to /api/settings/weather
 
 (function () {
   'use strict';
@@ -52,42 +52,163 @@
   });
 
   // ═══════════════════════════════════════
-  //  CALENDAR MODAL
+  //  CALENDARS — fully wired to backend
   // ═══════════════════════════════════════
 
-  const calModal = 'modal-calendar';
+  const calModal     = 'modal-calendar';
+  const deleteModal  = 'modal-delete';
+  const calList      = document.getElementById('calendar-list');
+  const calEmpty     = document.getElementById('calendar-empty');
 
-  // Open — Add
-  document.getElementById('btn-add-calendar').addEventListener('click', () => {
-    document.getElementById('modal-calendar-title').textContent = 'Add Calendar';
-    resetCalendarForm();
-    openModal(calModal);
-  });
+  // In-memory list refreshed from API
+  let calendars = [];
+  // Track which calendar we're editing (null = creating new)
+  let editingCalId = null;
 
-  // Close
-  document.getElementById('modal-calendar-close').addEventListener('click', () => closeModal(calModal));
-  document.getElementById('btn-calendar-cancel').addEventListener('click', () => closeModal(calModal));
+  const TYPE_LABELS = {
+    google:    'Google Calendar',
+    microsoft: 'Microsoft 365',
+    ics:       'ICS URL',
+  };
 
-  // Save (UI only — just close for now)
-  document.getElementById('btn-calendar-save').addEventListener('click', () => {
-    // TODO: wire to backend
-    closeModal(calModal);
-  });
+  // ── Load calendars on page load ──
+  async function loadCalendars() {
+    try {
+      const res = await fetch('/api/calendars');
+      calendars = await res.json();
+      renderCalendarList();
+    } catch (e) {
+      console.warn('Failed to load calendars:', e);
+    }
+  }
 
-  // Edit buttons on existing cards
-  document.querySelectorAll('.btn-edit').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const card  = btn.closest('.card');
-      const title = card.querySelector('.card-title').textContent;
-      document.getElementById('modal-calendar-title').textContent = 'Edit Calendar';
-      document.getElementById('cal-name').value = title;
-      openModal(calModal);
-    });
-  });
+  loadCalendars();
+
+  // ── Render the card list ──
+  function renderCalendarList() {
+    calList.innerHTML = '';
+
+    if (!calendars.length) {
+      calEmpty.style.display = '';
+      return;
+    }
+    calEmpty.style.display = 'none';
+
+    for (const cal of calendars) {
+      const card = document.createElement('div');
+      card.className = 'card' + (cal.enabled ? '' : ' card-disabled');
+      card.dataset.id = cal.id;
+
+      const subtitle = buildSubtitle(cal);
+
+      card.innerHTML = `
+        <div class="card-left">
+          <span class="cal-color-dot" style="background: ${cal.color}"></span>
+          <div class="card-info">
+            <span class="card-title">${esc(cal.name)}</span>
+            <span class="card-subtitle">${esc(subtitle)}</span>
+          </div>
+        </div>
+        <div class="card-right">
+          <span class="badge ${cal.enabled ? 'badge-connected' : 'badge-disabled'}">${cal.enabled ? 'Enabled' : 'Disabled'}</span>
+          <label class="toggle">
+            <input type="checkbox" ${cal.enabled ? 'checked' : ''}>
+            <span class="toggle-slider"></span>
+          </label>
+          <button class="btn-icon-only btn-sync" title="Sync now"><span>🔄</span></button>
+          <button class="btn-icon-only btn-edit" title="Edit"><span>✏️</span></button>
+          <button class="btn-icon-only btn-delete" title="Remove"><span>🗑️</span></button>
+        </div>
+      `;
+
+      // Toggle enable/disable
+      card.querySelector('.toggle input').addEventListener('change', async (e) => {
+        const enabled = e.target.checked;
+        try {
+          const res = await fetch(`/api/calendars/${cal.id}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled }),
+          });
+          const updated = await res.json();
+          cal.enabled = updated.enabled;
+          const badge = card.querySelector('.badge');
+          card.classList.toggle('card-disabled', !cal.enabled);
+          badge.className = `badge ${cal.enabled ? 'badge-connected' : 'badge-disabled'}`;
+          badge.textContent = cal.enabled ? 'Enabled' : 'Disabled';
+        } catch (err) {
+          console.error('Toggle failed:', err);
+          e.target.checked = !enabled; // revert
+        }
+      });
+
+      // Sync button
+      card.querySelector('.btn-sync').addEventListener('click', async (e) => {
+        const btn = e.currentTarget;
+        btn.classList.add('spinning');
+        btn.disabled = true;
+        try {
+          const res = await fetch(`/api/calendars/${cal.id}/sync`, { method: 'POST' });
+          const data = await res.json();
+          if (!res.ok) throw new Error(data.error || 'Sync failed');
+          // Flash success
+          const badge = card.querySelector('.badge');
+          const origText = badge.textContent;
+          const origClass = badge.className;
+          badge.className = 'badge badge-connected';
+          badge.textContent = `✓ ${data.events} events`;
+          setTimeout(() => {
+            badge.className = origClass;
+            badge.textContent = origText;
+          }, 3000);
+        } catch (err) {
+          const badge = card.querySelector('.badge');
+          const origText = badge.textContent;
+          const origClass = badge.className;
+          badge.className = 'badge badge-error';
+          badge.textContent = '✕ Sync failed';
+          setTimeout(() => {
+            badge.className = origClass;
+            badge.textContent = origText;
+          }, 3000);
+          console.error('Sync error:', err);
+        }
+        btn.classList.remove('spinning');
+        btn.disabled = false;
+      });
+
+      // Edit button
+      card.querySelector('.btn-edit').addEventListener('click', () => {
+        openEditModal(cal);
+      });
+
+      // Delete button
+      card.querySelector('.btn-delete').addEventListener('click', () => {
+        openDeleteModal(cal);
+      });
+
+      calList.appendChild(card);
+    }
+  }
+
+  function buildSubtitle(cal) {
+    const typeLabel = TYPE_LABELS[cal.type] || cal.type;
+    if (cal.type === 'ics' && cal.config?.url) {
+      const url = cal.config.url.length > 45 ? cal.config.url.slice(0, 42) + '…' : cal.config.url;
+      return `${typeLabel} · ${url}`;
+    }
+    return typeLabel;
+  }
+
+  function esc(str) {
+    const d = document.createElement('div');
+    d.textContent = str;
+    return d.innerHTML;
+  }
 
   // ── Type picker ──
-  const typePicker = document.getElementById('cal-type-picker');
-  const typeButtons = typePicker.querySelectorAll('.type-option');
+  const typePicker   = document.getElementById('cal-type-picker');
+  const typeButtons  = typePicker.querySelectorAll('.type-option');
   const typeFieldSets = {
     google:    document.getElementById('fields-google'),
     microsoft: document.getElementById('fields-microsoft'),
@@ -98,7 +219,6 @@
     btn.addEventListener('click', () => {
       typeButtons.forEach(b => b.classList.remove('selected'));
       btn.classList.add('selected');
-
       const type = btn.dataset.type;
       Object.entries(typeFieldSets).forEach(([key, el]) => {
         el.classList.toggle('hidden', key !== type);
@@ -117,25 +237,168 @@
     });
   });
 
-  // ── Auth buttons (UI feedback only) ──
+  // ── Auth buttons (placeholder — OAuth not yet implemented) ──
   document.getElementById('btn-google-auth').addEventListener('click', () => {
-    // TODO: trigger real OAuth flow
-    document.getElementById('google-auth-status').innerHTML = '✓ Would open Google sign-in…';
+    document.getElementById('google-auth-status').innerHTML =
+      '<span style="color:#ffb86c">⚠ Google OAuth integration coming soon. Use ICS URL for now.</span>';
   });
 
   document.getElementById('btn-ms-auth').addEventListener('click', () => {
-    // TODO: trigger real OAuth flow
-    document.getElementById('ms-auth-status').innerHTML = '✓ Would open Microsoft sign-in…';
+    document.getElementById('ms-auth-status').innerHTML =
+      '<span style="color:#ffb86c">⚠ Microsoft OAuth integration coming soon. Use ICS URL for now.</span>';
   });
 
+  // ── Open Add modal ──
+  document.getElementById('btn-add-calendar').addEventListener('click', () => {
+    editingCalId = null;
+    document.getElementById('modal-calendar-title').textContent = 'Add Calendar';
+    document.getElementById('btn-calendar-save').textContent = 'Add Calendar';
+    resetCalendarForm();
+    openModal(calModal);
+  });
+
+  // ── Open Edit modal ──
+  function openEditModal(cal) {
+    editingCalId = cal.id;
+    document.getElementById('modal-calendar-title').textContent = 'Edit Calendar';
+    document.getElementById('btn-calendar-save').textContent = 'Save Changes';
+    resetCalendarForm();
+
+    // Populate fields
+    document.getElementById('cal-name').value = cal.name;
+
+    // Select type
+    typeButtons.forEach(b => {
+      b.classList.toggle('selected', b.dataset.type === cal.type);
+    });
+    Object.entries(typeFieldSets).forEach(([key, el]) => {
+      el.classList.toggle('hidden', key !== cal.type);
+    });
+
+    // Select colour
+    colorSwatches.forEach(s => {
+      s.classList.toggle('selected', s.dataset.color === cal.color);
+    });
+
+    // ICS-specific fields
+    if (cal.type === 'ics' && cal.config) {
+      document.getElementById('ics-url').value = cal.config.url || '';
+      document.getElementById('ics-refresh').value = String(cal.config.refresh_minutes || 30);
+    }
+
+    openModal(calModal);
+  }
+
+  // ── Close modal ──
+  document.getElementById('modal-calendar-close').addEventListener('click', () => closeModal(calModal));
+  document.getElementById('btn-calendar-cancel').addEventListener('click', () => closeModal(calModal));
+
+  // ── Save (create or update) ──
+  document.getElementById('btn-calendar-save').addEventListener('click', async () => {
+    const btn = document.getElementById('btn-calendar-save');
+    const name  = document.getElementById('cal-name').value.trim();
+    const type  = typePicker.querySelector('.type-option.selected')?.dataset.type || 'ics';
+    const color = colorPicker.querySelector('.color-swatch.selected')?.dataset.color || '#8be9fd';
+
+    if (!name) {
+      document.getElementById('cal-name').focus();
+      document.getElementById('cal-name').style.borderColor = '#ff5555';
+      setTimeout(() => { document.getElementById('cal-name').style.borderColor = ''; }, 2000);
+      return;
+    }
+
+    // Build config based on type
+    const config = {};
+    if (type === 'ics') {
+      const icsUrl = document.getElementById('ics-url').value.trim();
+      if (!icsUrl) {
+        document.getElementById('ics-url').focus();
+        document.getElementById('ics-url').style.borderColor = '#ff5555';
+        setTimeout(() => { document.getElementById('ics-url').style.borderColor = ''; }, 2000);
+        return;
+      }
+      config.url = icsUrl;
+      config.refresh_minutes = parseInt(document.getElementById('ics-refresh').value, 10) || 30;
+    }
+    // Google/Microsoft config would go here when OAuth is implemented
+
+    btn.disabled = true;
+    btn.textContent = 'Saving…';
+
+    try {
+      let res;
+      if (editingCalId) {
+        res = await fetch(`/api/calendars/${editingCalId}`, {
+          method: 'PUT',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, type, color, config }),
+        });
+      } else {
+        res = await fetch('/api/calendars', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ name, type, color, enabled: true, config }),
+        });
+      }
+
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.error || `Server returned ${res.status}`);
+      }
+
+      closeModal(calModal);
+      await loadCalendars(); // refresh the list
+    } catch (e) {
+      alert('Error saving calendar: ' + e.message);
+    }
+
+    btn.disabled = false;
+    btn.textContent = editingCalId ? 'Save Changes' : 'Add Calendar';
+  });
+
+  // ── Delete modal ──
+  let deletingCalId = null;
+
+  function openDeleteModal(cal) {
+    deletingCalId = cal.id;
+    document.getElementById('delete-cal-name').textContent = cal.name;
+    openModal(deleteModal);
+  }
+
+  document.getElementById('modal-delete-close').addEventListener('click', () => closeModal(deleteModal));
+  document.getElementById('btn-delete-cancel').addEventListener('click', () => closeModal(deleteModal));
+  document.getElementById('btn-delete-confirm').addEventListener('click', async () => {
+    if (!deletingCalId) return;
+
+    const btn = document.getElementById('btn-delete-confirm');
+    btn.disabled = true;
+    btn.textContent = 'Removing…';
+
+    try {
+      const res = await fetch(`/api/calendars/${deletingCalId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error(`Server returned ${res.status}`);
+
+      closeModal(deleteModal);
+      await loadCalendars();
+    } catch (e) {
+      alert('Error removing calendar: ' + e.message);
+    }
+
+    btn.disabled = false;
+    btn.textContent = 'Remove';
+    deletingCalId = null;
+  });
+
+  // ── Form reset ──
   function resetCalendarForm() {
     document.getElementById('cal-name').value = '';
+    document.getElementById('cal-name').style.borderColor = '';
 
-    // Reset type to Google
+    // Reset type to ICS (most useful default since Google/Microsoft OAuth not yet wired)
     typeButtons.forEach(b => b.classList.remove('selected'));
-    typeButtons[0].classList.add('selected');
+    typePicker.querySelector('[data-type="ics"]').classList.add('selected');
     Object.values(typeFieldSets).forEach(el => el.classList.add('hidden'));
-    typeFieldSets.google.classList.remove('hidden');
+    typeFieldSets.ics.classList.remove('hidden');
 
     // Reset colour to first
     colorSwatches.forEach(s => s.classList.remove('selected'));
@@ -147,50 +410,9 @@
 
     // Reset ICS fields
     document.getElementById('ics-url').value = '';
+    document.getElementById('ics-url').style.borderColor = '';
+    document.getElementById('ics-refresh').value = '30';
   }
-
-  // ═══════════════════════════════════════
-  //  DELETE MODAL
-  // ═══════════════════════════════════════
-
-  const deleteModal = 'modal-delete';
-
-  document.querySelectorAll('.btn-delete').forEach(btn => {
-    btn.addEventListener('click', () => {
-      const card = btn.closest('.card');
-      const name = card.querySelector('.card-title').textContent;
-      document.getElementById('delete-cal-name').textContent = name;
-      openModal(deleteModal);
-    });
-  });
-
-  document.getElementById('modal-delete-close').addEventListener('click', () => closeModal(deleteModal));
-  document.getElementById('btn-delete-cancel').addEventListener('click', () => closeModal(deleteModal));
-  document.getElementById('btn-delete-confirm').addEventListener('click', () => {
-    // TODO: wire to backend
-    closeModal(deleteModal);
-  });
-
-  // ═══════════════════════════════════════
-  //  TOGGLE SWITCHES — card appearance
-  // ═══════════════════════════════════════
-
-  document.querySelectorAll('.card .toggle input').forEach(toggle => {
-    toggle.addEventListener('change', () => {
-      const card  = toggle.closest('.card');
-      const badge = card.querySelector('.badge');
-
-      if (toggle.checked) {
-        card.classList.remove('card-disabled');
-        badge.className = 'badge badge-connected';
-        badge.textContent = 'Connected';
-      } else {
-        card.classList.add('card-disabled');
-        badge.className = 'badge badge-disabled';
-        badge.textContent = 'Disabled';
-      }
-    });
-  });
 
   // ═══════════════════════════════════════
   //  WEATHER — fully wired to backend
