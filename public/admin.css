@@ -83,6 +83,32 @@ html, body {
 
 .nav-icon { font-size: 16px; }
 
+.logout-container {
+  padding: 12px 20px 16px;
+}
+
+.logout-btn {
+  width: 100%;
+  background: transparent;
+  border: none;
+  color: rgba(255,255,255,0.5);
+  padding: 10px 12px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 13px;
+  text-align: left;
+  transition: all 0.15s;
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-family: inherit;
+}
+
+.logout-btn:hover {
+  background: rgba(255,255,255,0.05);
+  color: rgba(255,255,255,0.8);
+}
+
 .sidebar-footer {
   padding: 16px 20px;
   border-top: 1px solid rgba(255,255,255,0.06);
@@ -93,6 +119,7 @@ html, body {
   text-decoration: none;
   font-size: 13px;
   transition: color 0.15s;
+  display: block;
 }
 .back-link:hover { color: rgba(255,255,255,0.7); }
 

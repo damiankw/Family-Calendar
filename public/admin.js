@@ -6,6 +6,42 @@
   'use strict';
 
   // ═══════════════════════════════════════
+  //  AUTH & LOGOUT
+  // ═══════════════════════════════════════
+
+  const logoutContainer = document.getElementById('logout-container');
+  const logoutBtn = document.getElementById('logout-btn');
+  const logoutText = document.getElementById('logout-text');
+
+  // Fetch current user and update logout link
+  async function loadCurrentUser() {
+    try {
+      const response = await fetch('/api/auth/me');
+      if (response.ok) {
+        const data = await response.json();
+        logoutText.textContent = `Log out of ${data.username}`;
+        logoutContainer.style.display = 'block';
+      }
+    } catch (e) {
+      console.error('Failed to load user:', e);
+    }
+  }
+
+  // Handle logout
+  logoutBtn.addEventListener('click', async (e) => {
+    e.preventDefault();
+    try {
+      await fetch('/api/logout', { method: 'POST' });
+      window.location.href = '/login';
+    } catch (e) {
+      console.error('Logout failed:', e);
+      window.location.href = '/login';
+    }
+  });
+
+  loadCurrentUser();
+
+  // ═══════════════════════════════════════
   //  SIDEBAR NAVIGATION
   // ═══════════════════════════════════════
 

@@ -1,13 +1,46 @@
 const express = require('express');
 const path = require('path');
+const crypto = require('crypto');
 const db = require('./db');
 const { syncCalendarSource } = require('./sync');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
+const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
 
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true }));
+
+// ───────── Simple cookie-based auth ─────────
+function signCookie(value) {
+  const hmac = crypto.createHmac('sha256', SESSION_SECRET);
+  hmac.update(value);
+  return `${value}.${hmac.digest('base64url')}`;
+}
+
+function unsignCookie(signedValue) {
+  if (!signedValue) return null;
+  const [value, signature] = signedValue.split('.');
+  if (!value || !signature) return null;
+  const hmac = crypto.createHmac('sha256', SESSION_SECRET);
+  hmac.update(value);
+  const expected = hmac.digest('base64url');
+  if (signature !== expected) return null;
+  return value;
+}
+
+// Parse auth cookie and attach user to req
+app.use((req, res, next) => {
+  const authCookie = req.headers.cookie?.split('; ').find(c => c.startsWith('auth='));
+  if (authCookie) {
+    const signedValue = authCookie.substring(5);
+    const username = unsignCookie(signedValue);
+    if (username) {
+      req.user = db.getUser(username);
+    }
+  }
+  next();
+});
 
 // ───────── Setup check middleware ─────────
 app.use((req, res, next) => {
@@ -61,13 +94,56 @@ app.post('/api/setup/init', (req, res) => {
     }
 
     const isFormPost = req.is('application/x-www-form-urlencoded') || req.is('multipart/form-data');
-    if (isFormPost) return res.redirect('/admin');
+    if (isFormPost) {
+      // Auto-login after setup
+      res.setHeader('Set-Cookie', `auth=${signCookie(username)}; HttpOnly; Path=/; Max-Age=2592000; SameSite=Strict`);
+      return res.redirect('/admin');
+    }
     res.json({ ok: true });
   } catch (e) {
     console.error('Setup error:', e.message);
     res.status(400).json({ error: e.message });
   }
 });
+
+// ───────── Auth routes ─────────
+app.post('/api/login', (req, res) => {
+  const { username, password } = req.body;
+  
+  if (!username || !password) {
+    return res.status(400).json({ error: 'Username and password required' });
+  }
+
+  if (db.verifyUser(username, password)) {
+    res.setHeader('Set-Cookie', `auth=${signCookie(username)}; HttpOnly; Path=/; Max-Age=2592000; SameSite=Strict`);
+    res.json({ ok: true, username });
+  } else {
+    res.status(401).json({ error: 'Invalid credentials' });
+  }
+});
+
+app.post('/api/logout', (req, res) => {
+  res.setHeader('Set-Cookie', 'auth=; HttpOnly; Path=/; Max-Age=0; SameSite=Strict');
+  res.json({ ok: true });
+});
+
+app.get('/api/auth/me', (req, res) => {
+  if (req.user) {
+    res.json({ username: req.user.username });
+  } else {
+    res.status(401).json({ error: 'Not authenticated' });
+  }
+});
+
+// Auth middleware for protected routes
+function requireAuth(req, res, next) {
+  if (!req.user) {
+    const apiRequest = req.path.startsWith('/api/');
+    if (apiRequest) return res.status(401).json({ error: 'Authentication required' });
+    return res.redirect('/login');
+  }
+  next();
+}
 
 // ───────── API routes (read-only from SQLite) ─────────
 
@@ -120,7 +196,7 @@ app.get('/api/calendars', (_req, res) => {
 });
 
 // POST /api/calendars — create a new calendar source
-app.post('/api/calendars', (req, res) => {
+app.post('/api/calendars', requireAuth, (req, res) => {
   const { name, type, color, enabled, config } = req.body;
   if (!name || !type) return res.status(400).json({ error: 'name and type are required' });
   const id = db.createCalendarSource({ name, type, color, enabled, config });
@@ -129,7 +205,7 @@ app.post('/api/calendars', (req, res) => {
 });
 
 // PUT /api/calendars/:id — update a calendar source
-app.put('/api/calendars/:id', (req, res) => {
+app.put('/api/calendars/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   const existing = db.getCalendarSource(id);
   if (!existing) return res.status(404).json({ error: 'Calendar not found' });
@@ -140,7 +216,7 @@ app.put('/api/calendars/:id', (req, res) => {
 });
 
 // PATCH /api/calendars/:id/toggle — quick enable/disable toggle
-app.patch('/api/calendars/:id/toggle', (req, res) => {
+app.patch('/api/calendars/:id/toggle', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   const existing = db.getCalendarSource(id);
   if (!existing) return res.status(404).json({ error: 'Calendar not found' });
@@ -151,7 +227,7 @@ app.patch('/api/calendars/:id/toggle', (req, res) => {
 });
 
 // DELETE /api/calendars/:id — delete a calendar source + its events
-app.delete('/api/calendars/:id', (req, res) => {
+app.delete('/api/calendars/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   const existing = db.getCalendarSource(id);
   if (!existing) return res.status(404).json({ error: 'Calendar not found' });
@@ -161,7 +237,7 @@ app.delete('/api/calendars/:id', (req, res) => {
 });
 
 // POST /api/calendars/:id/sync — on-demand sync for a single calendar
-app.post('/api/calendars/:id/sync', async (req, res) => {
+app.post('/api/calendars/:id/sync', requireAuth, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const existing = db.getCalendarSource(id);
   if (!existing) return res.status(404).json({ error: 'Calendar not found' });
@@ -188,7 +264,7 @@ app.get('/api/settings/weather', (_req, res) => {
 });
 
 // PUT /api/settings/weather — save weather settings
-app.put('/api/settings/weather', (req, res) => {
+app.put('/api/settings/weather', requireAuth, (req, res) => {
   const { lat, lon, tz, location_name, temp_unit, wind_unit } = req.body;
   if (lat != null)           db.setSetting('weather_lat',           String(lat));
   if (lon != null)           db.setSetting('weather_lon',           String(lon));
@@ -214,7 +290,7 @@ app.get('/api/birthdays/month/:month', (req, res) => {
 });
 
 // POST /api/birthdays — create a birthday
-app.post('/api/birthdays', (req, res) => {
+app.post('/api/birthdays', requireAuth, (req, res) => {
   const { name, month, day, year } = req.body;
   if (!name || !month || !day) return res.status(400).json({ error: 'name, month, and day are required' });
   try {
@@ -227,7 +303,7 @@ app.post('/api/birthdays', (req, res) => {
 });
 
 // PUT /api/birthdays/:id — update a birthday
-app.put('/api/birthdays/:id', (req, res) => {
+app.put('/api/birthdays/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!db.getBirthday(id)) return res.status(404).json({ error: 'Birthday not found' });
   db.updateBirthday(id, req.body);
@@ -235,7 +311,7 @@ app.put('/api/birthdays/:id', (req, res) => {
 });
 
 // DELETE /api/birthdays/:id — delete a birthday
-app.delete('/api/birthdays/:id', (req, res) => {
+app.delete('/api/birthdays/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!db.getBirthday(id)) return res.status(404).json({ error: 'Birthday not found' });
   db.deleteBirthday(id);
@@ -255,7 +331,7 @@ app.get('/api/reminders/enabled', (_req, res) => {
 });
 
 // POST /api/reminders — create a reminder
-app.post('/api/reminders', (req, res) => {
+app.post('/api/reminders', requireAuth, (req, res) => {
   try {
     const id = db.createReminder(req.body);
     res.json({ ok: true, id });
@@ -265,7 +341,7 @@ app.post('/api/reminders', (req, res) => {
 });
 
 // PUT /api/reminders/:id — update a reminder
-app.put('/api/reminders/:id', (req, res) => {
+app.put('/api/reminders/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!db.getReminder(id)) return res.status(404).json({ error: 'Reminder not found' });
   db.updateReminder(id, req.body);
@@ -273,7 +349,7 @@ app.put('/api/reminders/:id', (req, res) => {
 });
 
 // PATCH /api/reminders/:id/toggle — toggle enabled
-app.patch('/api/reminders/:id/toggle', (req, res) => {
+app.patch('/api/reminders/:id/toggle', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   const r = db.getReminder(id);
   if (!r) return res.status(404).json({ error: 'Reminder not found' });
@@ -282,7 +358,7 @@ app.patch('/api/reminders/:id/toggle', (req, res) => {
 });
 
 // DELETE /api/reminders/:id — delete a reminder
-app.delete('/api/reminders/:id', (req, res) => {
+app.delete('/api/reminders/:id', requireAuth, (req, res) => {
   const id = parseInt(req.params.id, 10);
   if (!db.getReminder(id)) return res.status(404).json({ error: 'Reminder not found' });
   db.deleteReminder(id);
@@ -306,14 +382,14 @@ app.get('/api/geocode', async (req, res) => {
 
 // ───────── Backup / Restore ─────────
 // GET /api/backup — export all data as JSON
-app.get('/api/backup', (_req, res) => {
+app.get('/api/backup', requireAuth, (_req, res) => {
   const payload = db.exportAllData();
   res.setHeader('Content-Disposition', 'attachment; filename="familydash-backup.json"');
   res.json(payload);
 });
 
 // POST /api/restore — import data from JSON
-app.post('/api/restore', (req, res) => {
+app.post('/api/restore', requireAuth, (req, res) => {
   try {
     db.importAllData(req.body);
     res.json({ ok: true });
@@ -324,8 +400,13 @@ app.post('/api/restore', (req, res) => {
 });
 
 // ───────── Admin panel ─────────
-app.get('/admin', (_req, res) => {
+app.get('/admin', requireAuth, (_req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+});
+
+// ───────── Login page ─────────
+app.get('/login', (_req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
 // ───────── Setup page ─────────

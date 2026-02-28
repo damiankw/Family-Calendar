@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="description" content="Login to FamilyDash">
+  <meta name="theme-color" content="#1e1e2e">
+  <title>Login — FamilyDash</title>
+  <link rel="stylesheet" href="/setup.css">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+</head>
+<body>
+  <div class="setup-container">
+    <div class="setup-card">
+      <div class="setup-header">
+        <h1>Welcome Back</h1>
+        <p>Sign in to FamilyDash</p>
+      </div>
+
+      <form class="setup-form" id="login-form">
+        <div class="form-step active">
+          <div class="form-group">
+            <label for="username">Username</label>
+            <input type="text" id="username" name="username" placeholder="admin" required autofocus>
+          </div>
+          <div class="form-group">
+            <label for="password">Password</label>
+            <input type="password" id="password" name="password" placeholder="••••••••" required>
+          </div>
+          <div class="form-actions">
+            <button type="submit" class="btn btn-success">Sign In</button>
+          </div>
+          <div class="status" id="login-status"></div>
+          <div style="text-align: center; margin-top: 20px;">
+            <a href="/" style="color: var(--text-secondary); font-size: 13px; text-decoration: none;">
+              ← Back to Dashboard
+            </a>
+          </div>
+        </div>
+      </form>
+    </div>
+  </div>
+
+  <script>
+    const form = document.getElementById('login-form');
+    const statusDiv = document.getElementById('login-status');
+
+    form.addEventListener('submit', async (e) => {
+      e.preventDefault();
+      
+      const username = document.getElementById('username').value.trim();
+      const password = document.getElementById('password').value;
+
+      if (!username || !password) {
+        showStatus('Username and password are required', 'error');
+        return;
+      }
+
+      const submitBtn = form.querySelector('button[type="submit"]');
+      const originalText = submitBtn.textContent;
+      submitBtn.disabled = true;
+      submitBtn.textContent = 'Signing in...';
+
+      showStatus('Authenticating...', 'loading');
+
+      try {
+        const response = await fetch('/api/login', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ username, password }),
+        });
+
+        const data = await response.json();
+
+        if (response.ok) {
+          showStatus('Success! Redirecting...', 'success');
+          setTimeout(() => {
+            window.location.href = '/admin';
+          }, 500);
+        } else {
+          showStatus(data.error || 'Login failed', 'error');
+          submitBtn.disabled = false;
+          submitBtn.textContent = originalText;
+        }
+      } catch (error) {
+        showStatus('Login failed: ' + error.message, 'error');
+        submitBtn.disabled = false;
+        submitBtn.textContent = originalText;
+      }
+    });
+
+    function showStatus(message, type) {
+      statusDiv.textContent = message;
+      statusDiv.className = `status ${type}`;
+    }
+  </script>
+</body>
+</html>
