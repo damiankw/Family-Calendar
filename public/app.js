@@ -123,26 +123,24 @@
         if (d.date === today) auroraTodayVisibility = d.visibility;
       }
 
-      // Render the aurora bar in the weather section
+      // Render the aurora bar — only when visible or possible
       const auroraBar = document.getElementById('aurora-bar');
       if (auroraBar) {
-        auroraBar.style.display = showAurora ? '' : 'none';
-        if (showAurora) {
+        const v = auroraTodayVisibility;
+        const shouldShow = showAurora && (v === 'visible' || v === 'possible');
+        auroraBar.style.display = shouldShow ? '' : 'none';
+        if (shouldShow) {
           const name = auroraHemisphere === 'australis' ? 'Aurora Australis' : 'Aurora Borealis';
           document.getElementById('aurora-name').textContent = name;
 
-          const v = auroraTodayVisibility;
           const badge = document.getElementById('aurora-badge');
           badge.className = 'aurora-badge aurora-' + v;
           if (v === 'visible') {
             badge.textContent = 'Visible tonight';
             document.getElementById('aurora-icon').textContent = '🌌';
-          } else if (v === 'possible') {
+          } else {
             badge.textContent = 'Possible';
             document.getElementById('aurora-icon').textContent = '✨';
-          } else {
-            badge.textContent = 'Unlikely';
-            document.getElementById('aurora-icon').textContent = '☀';
           }
         }
       }
