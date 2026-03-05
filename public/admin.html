@@ -35,6 +35,9 @@
         <li class="nav-item active" data-section="calendars">
           <span class="nav-icon"><i class="fa-solid fa-calendar"></i></span> Calendars
         </li>
+        <li class="nav-item" data-section="school-holidays">
+          <span class="nav-icon"><i class="fa-solid fa-school"></i></span> School Holidays
+        </li>
         <li class="nav-item" data-section="reminders">
           <span class="nav-icon"><i class="fa-solid fa-bell"></i></span> Reminders
         </li>
@@ -205,6 +208,89 @@
           <div class="modal-footer">
             <button class="btn btn-ghost" id="btn-calendar-cancel">Cancel</button>
             <button class="btn btn-primary" id="btn-calendar-save">Save Calendar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- ═══════ SCHOOL HOLIDAYS ═══════ -->
+      <section class="settings-section" id="section-school-holidays">
+        <div class="section-header">
+          <div>
+            <h1>School Holidays</h1>
+            <p class="section-desc">Manage school holiday calendars. Holiday periods are highlighted on the dashboard calendar and shown at the top of the daily sidebar.</p>
+          </div>
+          <button class="btn btn-primary" id="btn-add-school-holiday">
+            <span class="btn-icon">+</span> Add Calendar
+          </button>
+        </div>
+
+        <div class="card-list" id="school-holiday-list"></div>
+        <div class="empty-state" id="school-holiday-empty" style="display:none">
+          <span class="empty-icon">🏫</span>
+          <p>No school holiday calendars configured yet. Click <strong>Add Calendar</strong> to get started.</p>
+        </div>
+      </section>
+
+      <!-- School holiday add/edit modal -->
+      <div class="modal-overlay" id="modal-school-holiday">
+        <div class="modal" style="max-width: 560px;">
+          <div class="modal-header">
+            <h2 id="modal-sh-title">Add School Holiday Calendar</h2>
+            <button class="btn-icon-only" id="modal-sh-close"><span>✕</span></button>
+          </div>
+          <div class="modal-body">
+
+            <div class="form-group">
+              <label class="form-label" for="sh-name">Calendar Name</label>
+              <input type="text" class="form-input" id="sh-name" placeholder="e.g. Melbourne – State Schools">
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">Highlight Colour</label>
+              <div class="color-picker" id="sh-color-picker">
+                <button class="color-swatch selected" data-color="#50fa7b" style="background:#50fa7b"></button>
+                <button class="color-swatch" data-color="#8be9fd" style="background:#8be9fd"></button>
+                <button class="color-swatch" data-color="#ffb86c" style="background:#ffb86c"></button>
+                <button class="color-swatch" data-color="#bd93f9" style="background:#bd93f9"></button>
+                <button class="color-swatch" data-color="#ff79c6" style="background:#ff79c6"></button>
+                <button class="color-swatch" data-color="#f1fa8c" style="background:#f1fa8c"></button>
+                <button class="color-swatch" data-color="#ff5555" style="background:#ff5555"></button>
+                <button class="color-swatch" data-color="#4285F4" style="background:#4285F4"></button>
+                <button class="color-swatch" data-color="#ffffff" style="background:#ffffff"></button>
+              </div>
+            </div>
+
+            <div class="divider-text">holiday periods</div>
+
+            <div id="sh-periods-list" style="display:flex; flex-direction:column; gap:0.5rem; margin-bottom:0.75rem;">
+              <!-- Holiday period rows injected by JS -->
+            </div>
+
+            <button class="btn btn-ghost" id="btn-sh-add-period" style="width:100%">
+              <span class="btn-icon">+</span> Add Period
+            </button>
+
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" id="btn-sh-cancel">Cancel</button>
+            <button class="btn btn-primary" id="btn-sh-save">Add Calendar</button>
+          </div>
+        </div>
+      </div>
+
+      <!-- School holiday delete confirmation modal -->
+      <div class="modal-overlay" id="modal-sh-delete">
+        <div class="modal modal-sm">
+          <div class="modal-header">
+            <h2>Remove School Holiday Calendar</h2>
+            <button class="btn-icon-only" id="modal-sh-delete-close"><span>✕</span></button>
+          </div>
+          <div class="modal-body">
+            <p>Remove <strong id="delete-sh-name"></strong>? All holiday periods for this calendar will be deleted.</p>
+          </div>
+          <div class="modal-footer">
+            <button class="btn btn-ghost" id="btn-sh-delete-cancel">Cancel</button>
+            <button class="btn btn-danger" id="btn-sh-delete-confirm">Remove</button>
           </div>
         </div>
       </div>

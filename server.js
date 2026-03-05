@@ -451,6 +451,74 @@ app.delete('/api/reminders/:id', requireAuth, (req, res) => {
   res.json({ ok: true, id });
 });
 
+// ───────── School Holidays API ─────────
+
+// GET /api/school-holidays — list all school holiday sources
+app.get('/api/school-holidays', (_req, res) => {
+  const sources = db.getAllSchoolHolidaySources().map(s => ({
+    ...s,
+    enabled: !!s.enabled,
+  }));
+  res.json(sources);
+});
+
+// GET /api/school-holidays/active — enabled holiday periods for the dashboard
+app.get('/api/school-holidays/active', (_req, res) => {
+  res.json(db.getActiveSchoolHolidays());
+});
+
+// GET /api/school-holidays/:id — single source + its dates
+app.get('/api/school-holidays/:id', (_req, res) => {
+  const id = parseInt(_req.params.id, 10);
+  const src = db.getSchoolHolidaySource(id);
+  if (!src) return res.status(404).json({ error: 'School holiday source not found' });
+  const dates = db.getSchoolHolidayDates(id);
+  res.json({ ...src, enabled: !!src.enabled, dates });
+});
+
+// POST /api/school-holidays — create a new source (optionally with dates)
+app.post('/api/school-holidays', requireAuth, (req, res) => {
+  const { name, color, enabled, dates } = req.body;
+  if (!name) return res.status(400).json({ error: 'name is required' });
+  const id = db.createSchoolHolidaySource({ name, color, enabled });
+  if (Array.isArray(dates) && dates.length) {
+    db.replaceSchoolHolidayDates(id, dates);
+  }
+  const src = db.getSchoolHolidaySource(id);
+  res.status(201).json({ ...src, enabled: !!src.enabled, dates: db.getSchoolHolidayDates(id) });
+});
+
+// PUT /api/school-holidays/:id — update source + replace dates
+app.put('/api/school-holidays/:id', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!db.getSchoolHolidaySource(id)) return res.status(404).json({ error: 'School holiday source not found' });
+  const { name, color, enabled, dates } = req.body;
+  db.updateSchoolHolidaySource(id, { name, color, enabled });
+  if (Array.isArray(dates)) {
+    db.replaceSchoolHolidayDates(id, dates);
+  }
+  const src = db.getSchoolHolidaySource(id);
+  res.json({ ...src, enabled: !!src.enabled, dates: db.getSchoolHolidayDates(id) });
+});
+
+// PATCH /api/school-holidays/:id/toggle — quick enable/disable
+app.patch('/api/school-holidays/:id/toggle', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const src = db.getSchoolHolidaySource(id);
+  if (!src) return res.status(404).json({ error: 'School holiday source not found' });
+  const newEnabled = !src.enabled;
+  db.updateSchoolHolidaySource(id, { enabled: newEnabled });
+  res.json({ id, enabled: newEnabled });
+});
+
+// DELETE /api/school-holidays/:id — delete source + all its dates
+app.delete('/api/school-holidays/:id', requireAuth, (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  if (!db.getSchoolHolidaySource(id)) return res.status(404).json({ error: 'School holiday source not found' });
+  db.deleteSchoolHolidaySource(id);
+  res.json({ ok: true, id });
+});
+
 // GET /api/geocode?q=... — proxy to Open-Meteo geocoding (avoids CORS)
 app.get('/api/geocode', async (req, res) => {
   const q = req.query.q;

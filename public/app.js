@@ -44,6 +44,9 @@
   let auroraHemisphere = 'borealis';
   let auroraTodayVisibility = 'unlikely';
 
+  // School holidays keyed by "YYYY-MM-DD" → { name, color } (first matching period)
+  let schoolHolidayMap = {};
+
   // Unit settings (fetched from API)
   let tempUnit   = 'celsius';   // 'celsius' | 'fahrenheit'
   let windUnit   = 'kmh';       // 'kmh' | 'mph' | 'ms'
@@ -108,6 +111,28 @@
       remindersRaw = await res.json();
     } catch (e) {
       console.warn('Failed to fetch reminders:', e);
+    }
+  }
+
+  async function fetchSchoolHolidays() {
+    try {
+      const res     = await fetch('/api/school-holidays/active');
+      const periods = await res.json();
+      schoolHolidayMap = {};
+      for (const p of periods) {
+        // Expand each date range into individual day entries
+        let cur = new Date(p.start_date + 'T00:00:00');
+        const end = new Date(p.end_date + 'T00:00:00');
+        while (cur <= end) {
+          const key = cur.toISOString().slice(0, 10);
+          if (!schoolHolidayMap[key]) {
+            schoolHolidayMap[key] = { name: p.name, color: p.color };
+          }
+          cur.setDate(cur.getDate() + 1);
+        }
+      }
+    } catch (e) {
+      console.warn('Failed to fetch school holidays:', e);
     }
   }
 
@@ -283,11 +308,19 @@
 
       for (let i = 0; i < numDays; i++) {
         const d = new Date(now); d.setDate(d.getDate() + i);
+        const dKey = dateKey(d.getFullYear(), d.getMonth(), d.getDate());
+
+        // School holiday banner (shown first if today/tomorrow is a holiday)
+        const sh = schoolHolidayMap[dKey];
+        const schoolHols = sh
+          ? [{ time: null, color: sh.color, title: sh.name, _schoolHoliday: true }]
+          : [];
+
         const bdays = birthdaysForDate(d.getMonth() + 1, d.getDate());
         const rems  = remindersForDate(d).map(r => ({
           time: null, color: r.color, title: r.title, _reminder: true, _icon: r.icon || 'fa-bell'
         }));
-        renderEventsList(`events-day-${i}`, [...bdays, ...rems, ...allEvents[i]]);
+        renderEventsList(`events-day-${i}`, [...schoolHols, ...bdays, ...rems, ...allEvents[i]]);
       }
     } catch (e) {
       console.warn('Failed to fetch schedule events:', e);
@@ -324,7 +357,18 @@
     for (const ev of events) {
       const li = document.createElement('li');
       li.className = 'event';
-      if (ev._reminder) {
+      if (ev._schoolHoliday) {
+        // School holiday banner — always first, distinct styling
+        li.className = 'event school-holiday-event';
+        li.style.setProperty('--sh-color', ev.color || '#50fa7b');
+        li.style.borderColor = hexToRgba(ev.color || '#50fa7b', 0.25);
+        li.style.background  = hexToRgba(ev.color || '#50fa7b', 0.07);
+        li.innerHTML = `
+          <span class="sh-icon">🏫</span>
+          <span class="sh-label" style="color:${ev.color || '#50fa7b'}">School Holidays</span>
+          <span class="sh-name">${ev.title}</span>
+        `;
+      } else if (ev._reminder) {
         // Reminder: "Reminder" in time slot, coloured icon where dot goes, then title
         li.innerHTML = `
           <span class="event-time all-day">Reminder</span>
@@ -355,6 +399,18 @@
   // ───────── Helpers ─────────
   function dateKey(y, m, d) {
     return `${y}-${String(m + 1).padStart(2, '0')}-${String(d).padStart(2, '0')}`;
+  }
+
+  // Convert a hex colour to rgba() string
+  function hexToRgba(hex, alpha) {
+    const c = hex.replace('#', '');
+    const full = c.length === 3
+      ? c.split('').map(x => x + x).join('')
+      : c;
+    const r = parseInt(full.slice(0, 2), 16);
+    const g = parseInt(full.slice(2, 4), 16);
+    const b = parseInt(full.slice(4, 6), 16);
+    return `rgba(${r},${g},${b},${alpha})`;
   }
 
   function createDayCell(year, month, day, extraClasses) {
@@ -391,6 +447,24 @@
         aTag.className = `aurora-tag aurora-${aurora.visibility}`;
         aTag.textContent = aurora.visibility === 'visible' ? '🌌 Aurora' : '✨ Aurora?';
         header.appendChild(aTag);
+      }
+    }
+
+    // School holiday indicator
+    {
+      const shKey = dateKey(year, month, day);
+      const sh = schoolHolidayMap[shKey];
+      if (sh) {
+        cell.classList.add('school-holiday');
+        cell.style.setProperty('--sh-color', sh.color);
+        // Rewrite the background with the source's colour at very low opacity
+        cell.style.background = hexToRgba(sh.color, 0.07);
+        const shTag = document.createElement('span');
+        shTag.className = 'school-holiday-tag';
+        shTag.style.color = sh.color;
+        shTag.style.background = hexToRgba(sh.color, 0.15);
+        shTag.textContent = '🏫';
+        header.appendChild(shTag);
       }
     }
 
@@ -537,7 +611,7 @@
   // ───────── Refresh cycle ─────────
   async function refreshAll() {
     await fetchWeatherSettings();
-    await Promise.all([fetchEvents(), fetchWeather(), fetchBirthdays(), fetchReminders(), fetchAurora()]);
+    await Promise.all([fetchEvents(), fetchWeather(), fetchBirthdays(), fetchReminders(), fetchAurora(), fetchSchoolHolidays()]);
     buildCalendar();
     await fetchTodayTomorrow();
   }

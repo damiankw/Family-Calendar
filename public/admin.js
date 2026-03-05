@@ -1322,4 +1322,239 @@
     });
   }
 
+  // ═══════════════════════════════════════
+  //  SCHOOL HOLIDAYS
+  // ═══════════════════════════════════════
+
+  const shList  = document.getElementById('school-holiday-list');
+  const shEmpty = document.getElementById('school-holiday-empty');
+  let schoolHolidays   = [];
+  let editingShId      = null;
+  let deletingShId     = null;
+
+  // School holiday colour picker
+  const shColorPicker  = document.getElementById('sh-color-picker');
+  const shColorSwatches = shColorPicker ? shColorPicker.querySelectorAll('.color-swatch') : [];
+  shColorSwatches.forEach(sw => {
+    sw.addEventListener('click', () => {
+      shColorSwatches.forEach(s => s.classList.remove('selected'));
+      sw.classList.add('selected');
+    });
+  });
+
+  // ── Period row builder ──
+  function buildPeriodRow(period) {
+    const row = document.createElement('div');
+    row.className = 'sh-period-row';
+    row.style.cssText = 'display:grid;grid-template-columns:1fr 140px 140px auto;gap:0.5rem;align-items:center;';
+    row.innerHTML = `
+      <input type="text" class="form-input sh-period-name" placeholder="e.g. Summer Holidays" value="${esc(period?.name || '')}">
+      <input type="date" class="form-input sh-period-start" value="${period?.start_date || ''}">
+      <input type="date" class="form-input sh-period-end"   value="${period?.end_date || ''}">
+      <button class="btn-icon-only" title="Remove period"><i class="fa-solid fa-xmark"></i></button>
+    `;
+    row.querySelector('.btn-icon-only').addEventListener('click', () => row.remove());
+    return row;
+  }
+
+  function getPeriodsFromForm() {
+    const rows = document.querySelectorAll('#sh-periods-list .sh-period-row');
+    const periods = [];
+    for (const row of rows) {
+      const name       = row.querySelector('.sh-period-name').value.trim();
+      const start_date = row.querySelector('.sh-period-start').value;
+      const end_date   = row.querySelector('.sh-period-end').value;
+      if (name && start_date && end_date) periods.push({ name, start_date, end_date });
+    }
+    return periods;
+  }
+
+  function populatePeriodsList(periods) {
+    const container = document.getElementById('sh-periods-list');
+    container.innerHTML = '';
+    for (const p of periods) container.appendChild(buildPeriodRow(p));
+  }
+
+  if (document.getElementById('btn-sh-add-period')) {
+    document.getElementById('btn-sh-add-period').addEventListener('click', () => {
+      document.getElementById('sh-periods-list').appendChild(buildPeriodRow(null));
+    });
+  }
+
+  // ── Load school holiday sources ──
+  async function loadSchoolHolidays() {
+    try {
+      const res = await fetch('/api/school-holidays');
+      schoolHolidays = await res.json();
+      renderSchoolHolidayList();
+    } catch (e) {
+      console.warn('Failed to load school holidays:', e);
+    }
+  }
+
+  loadSchoolHolidays();
+
+  // ── Render card list ──
+  function renderSchoolHolidayList() {
+    if (!shList) return;
+    shList.innerHTML = '';
+
+    if (!schoolHolidays.length) {
+      if (shEmpty) shEmpty.style.display = '';
+      return;
+    }
+    if (shEmpty) shEmpty.style.display = 'none';
+
+    for (const sh of schoolHolidays) {
+      const card = document.createElement('div');
+      card.className = 'card' + (sh.enabled ? '' : ' card-disabled');
+      card.dataset.id = sh.id;
+
+      card.innerHTML = `
+        <div class="card-left">
+          <span class="cal-color-dot" style="background:${sh.color}"></span>
+          <div class="card-info">
+            <span class="card-title">${esc(sh.name)}</span>
+            <span class="card-subtitle">School Holiday Calendar</span>
+          </div>
+        </div>
+        <div class="card-right">
+          <label class="toggle" title="Enable/disable">
+            <input type="checkbox" ${sh.enabled ? 'checked' : ''}>
+            <span class="toggle-slider"></span>
+          </label>
+          <button class="btn-icon-only btn-edit" title="Edit"><i class="fa-solid fa-pen"></i></button>
+          <button class="btn-icon-only btn-delete" title="Remove"><i class="fa-solid fa-trash"></i></button>
+        </div>
+      `;
+
+      // Toggle
+      card.querySelector('.toggle input').addEventListener('change', async () => {
+        await fetch(`/api/school-holidays/${sh.id}/toggle`, { method: 'PATCH' });
+        await loadSchoolHolidays();
+      });
+
+      // Edit
+      card.querySelector('.btn-edit').addEventListener('click', async () => {
+        editingShId = sh.id;
+        document.getElementById('modal-sh-title').textContent = 'Edit School Holiday Calendar';
+        document.getElementById('btn-sh-save').textContent = 'Save Changes';
+        document.getElementById('sh-name').value = sh.name;
+
+        // Select colour
+        shColorSwatches.forEach(s => s.classList.toggle('selected', s.dataset.color === sh.color));
+        if (!shColorPicker.querySelector('.color-swatch.selected')) {
+          shColorSwatches[0].classList.add('selected');
+        }
+
+        // Load dates
+        try {
+          const r = await fetch(`/api/school-holidays/${sh.id}`);
+          const data = await r.json();
+          populatePeriodsList(data.dates || []);
+        } catch (_) { populatePeriodsList([]); }
+
+        openModal('modal-school-holiday');
+      });
+
+      // Delete
+      card.querySelector('.btn-delete').addEventListener('click', () => {
+        deletingShId = sh.id;
+        document.getElementById('delete-sh-name').textContent = sh.name;
+        openModal('modal-sh-delete');
+      });
+
+      shList.appendChild(card);
+    }
+  }
+
+  // ── Add button ──
+  if (document.getElementById('btn-add-school-holiday')) {
+    document.getElementById('btn-add-school-holiday').addEventListener('click', () => {
+      editingShId = null;
+      document.getElementById('modal-sh-title').textContent = 'Add School Holiday Calendar';
+      document.getElementById('btn-sh-save').textContent = 'Add Calendar';
+      document.getElementById('sh-name').value = '';
+      shColorSwatches.forEach(s => s.classList.remove('selected'));
+      shColorSwatches[0].classList.add('selected');
+      populatePeriodsList([]);
+      openModal('modal-school-holiday');
+    });
+  }
+
+  // ── Close modal ──
+  if (document.getElementById('modal-sh-close'))
+    document.getElementById('modal-sh-close').addEventListener('click', () => closeModal('modal-school-holiday'));
+  if (document.getElementById('btn-sh-cancel'))
+    document.getElementById('btn-sh-cancel').addEventListener('click', () => closeModal('modal-school-holiday'));
+
+  // ── Save ──
+  if (document.getElementById('btn-sh-save')) {
+    document.getElementById('btn-sh-save').addEventListener('click', async () => {
+      const btn   = document.getElementById('btn-sh-save');
+      const name  = document.getElementById('sh-name').value.trim();
+      const color = shColorPicker.querySelector('.color-swatch.selected')?.dataset.color || '#50fa7b';
+      const dates = getPeriodsFromForm();
+
+      if (!name) {
+        const inp = document.getElementById('sh-name');
+        inp.focus(); inp.style.borderColor = '#ff5555';
+        setTimeout(() => { inp.style.borderColor = ''; }, 2000);
+        return;
+      }
+
+      btn.disabled = true;
+      btn.textContent = 'Saving…';
+
+      try {
+        let res;
+        if (editingShId) {
+          res = await fetch(`/api/school-holidays/${editingShId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, color, dates }),
+          });
+        } else {
+          res = await fetch('/api/school-holidays', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, color, enabled: true, dates }),
+          });
+        }
+        if (!res.ok) throw new Error((await res.json()).error || `Server error ${res.status}`);
+        closeModal('modal-school-holiday');
+        await loadSchoolHolidays();
+      } catch (e) {
+        alert('Error saving school holiday calendar: ' + e.message);
+      }
+
+      btn.disabled = false;
+      btn.textContent = editingShId ? 'Save Changes' : 'Add Calendar';
+    });
+  }
+
+  // ── Delete ──
+  if (document.getElementById('modal-sh-delete-close'))
+    document.getElementById('modal-sh-delete-close').addEventListener('click', () => closeModal('modal-sh-delete'));
+  if (document.getElementById('btn-sh-delete-cancel'))
+    document.getElementById('btn-sh-delete-cancel').addEventListener('click', () => closeModal('modal-sh-delete'));
+
+  if (document.getElementById('btn-sh-delete-confirm')) {
+    document.getElementById('btn-sh-delete-confirm').addEventListener('click', async () => {
+      if (!deletingShId) return;
+      const btn = document.getElementById('btn-sh-delete-confirm');
+      btn.disabled = true; btn.textContent = 'Removing…';
+      try {
+        const res = await fetch(`/api/school-holidays/${deletingShId}`, { method: 'DELETE' });
+        if (!res.ok) throw new Error(`Server error ${res.status}`);
+        closeModal('modal-sh-delete');
+        await loadSchoolHolidays();
+      } catch (e) {
+        alert('Error removing: ' + e.message);
+      }
+      btn.disabled = false; btn.textContent = 'Remove';
+      deletingShId = null;
+    });
+  }
+
 })();

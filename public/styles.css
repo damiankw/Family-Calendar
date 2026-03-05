@@ -260,6 +260,66 @@ html, body {
   color: #ffb86c;
 }
 
+/* School holiday cell highlight */
+.day-cell.school-holiday {
+  background: rgba(80, 250, 123, 0.06) !important;
+  border-radius: 0.4vw;
+}
+
+.day-cell.school-holiday:hover {
+  background: rgba(80, 250, 123, 0.11) !important;
+}
+
+.day-cell.today.school-holiday {
+  background: rgba(224, 36, 94, 0.10) !important;
+  box-shadow: inset 0 0 0 1px rgba(80, 250, 123, 0.25);
+}
+
+/* School holiday tag in calendar cell header */
+.school-holiday-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.15vw;
+  font-size: 0.52vw;
+  padding: 0 0.28vw;
+  border-radius: 0.2vw;
+  line-height: 1.65;
+  white-space: nowrap;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  background: rgba(80, 250, 123, 0.13);
+  color: #50fa7b;
+}
+
+/* "SCHOOL HOLIDAYS" banner item in sidebar event list */
+.event.school-holiday-event {
+  background: rgba(80, 250, 123, 0.07);
+  border: 1px solid rgba(80, 250, 123, 0.18);
+  display: flex;
+  align-items: center;
+  gap: 0.6vw;
+  padding: 0.6vh 0.6vw;
+  border-radius: 0.5vw;
+}
+
+.event.school-holiday-event .sh-icon {
+  font-size: 1vw;
+  line-height: 1;
+}
+
+.event.school-holiday-event .sh-label {
+  font-size: 0.85vw;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.event.school-holiday-event .sh-name {
+  font-size: 0.75vw;
+  font-weight: 400;
+  opacity: 0.65;
+}
+
 /* Events */
 .events {
   flex: 1;
@@ -698,4 +758,17 @@ html, body {
   .event-dot i {
     font-size: 14px !important;
   }
+
+  /* School holiday banner on mobile */
+  .event.school-holiday-event {
+    gap: 8px;
+    padding: 8px 10px;
+    border-radius: 6px;
+  }
+  .event.school-holiday-event .sh-icon { font-size: 16px; }
+  .event.school-holiday-event .sh-label { font-size: 13px; }
+  .event.school-holiday-event .sh-name  { font-size: 12px; }
+
+  /* School holiday tag in calendar cell (hidden on mobile - calendar is hidden) */
+  .school-holiday-tag { font-size: 9px; padding: 0 3px; }
 }

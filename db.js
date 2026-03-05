@@ -138,6 +138,63 @@ function initialise(db) {
       updated_at    TEXT    DEFAULT (datetime('now'))
     )
   `);
+
+  // ── School holidays tables (idempotent) ──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS school_holiday_sources (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      name          TEXT    NOT NULL,
+      color         TEXT    DEFAULT '#50fa7b',
+      enabled       INTEGER DEFAULT 1,
+      created_at    TEXT    DEFAULT (datetime('now')),
+      updated_at    TEXT    DEFAULT (datetime('now'))
+    );
+
+    CREATE TABLE IF NOT EXISTS school_holiday_dates (
+      id            INTEGER PRIMARY KEY AUTOINCREMENT,
+      source_id     INTEGER NOT NULL,
+      name          TEXT    NOT NULL,
+      start_date    TEXT    NOT NULL,
+      end_date      TEXT    NOT NULL,
+      created_at    TEXT    DEFAULT (datetime('now')),
+      FOREIGN KEY (source_id) REFERENCES school_holiday_sources(id) ON DELETE CASCADE
+    );
+
+    CREATE INDEX IF NOT EXISTS idx_school_holiday_dates_source ON school_holiday_dates(source_id);
+    CREATE INDEX IF NOT EXISTS idx_school_holiday_dates_range ON school_holiday_dates(start_date, end_date);
+  `);
+
+  // ── Seed Melbourne State Schools holidays if table is empty ──
+  const sourceCount = db.prepare('SELECT COUNT(*) AS n FROM school_holiday_sources').get();
+  if (sourceCount.n === 0) {
+    const srcId = db.prepare(`
+      INSERT INTO school_holiday_sources (name, color, enabled)
+      VALUES ('Melbourne – State Schools', '#50fa7b', 1)
+    `).run().lastInsertRowid;
+
+    const insertPeriod = db.prepare(`
+      INSERT INTO school_holiday_dates (source_id, name, start_date, end_date)
+      VALUES (@source_id, @name, @start_date, @end_date)
+    `);
+
+    const melbournePeriods = [
+      // 2025
+      { name: 'Summer Holidays',          start_date: '2025-01-01', end_date: '2025-01-27' },
+      { name: 'Autumn / Easter Holidays', start_date: '2025-04-05', end_date: '2025-04-22' },
+      { name: 'Winter Holidays',          start_date: '2025-06-28', end_date: '2025-07-13' },
+      { name: 'Spring Holidays',          start_date: '2025-09-20', end_date: '2025-10-05' },
+      { name: 'Summer Holidays',          start_date: '2025-12-20', end_date: '2026-01-27' },
+      // 2026
+      { name: 'Autumn Holidays',          start_date: '2026-04-04', end_date: '2026-04-19' },
+      { name: 'Winter Holidays',          start_date: '2026-06-27', end_date: '2026-07-12' },
+      { name: 'Spring Holidays',          start_date: '2026-09-19', end_date: '2026-10-04' },
+      { name: 'Summer Holidays',          start_date: '2026-12-19', end_date: '2027-01-26' },
+    ];
+
+    for (const p of melbournePeriods) {
+      insertPeriod.run({ source_id: srcId, ...p });
+    }
+  }
 }
 
 // ───────── Password utilities ─────────
@@ -463,6 +520,76 @@ function deleteReminder(id) {
   db.prepare('DELETE FROM reminders WHERE id = ?').run(id);
 }
 
+// ───────── School Holiday helpers ─────────
+function getAllSchoolHolidaySources() {
+  const db = getDb();
+  return db.prepare('SELECT * FROM school_holiday_sources ORDER BY created_at').all();
+}
+
+function getSchoolHolidaySource(id) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM school_holiday_sources WHERE id = ?').get(id) || null;
+}
+
+function createSchoolHolidaySource({ name, color, enabled }) {
+  const db = getDb();
+  const result = db.prepare(`
+    INSERT INTO school_holiday_sources (name, color, enabled)
+    VALUES (@name, @color, @enabled)
+  `).run({ name, color: color || '#50fa7b', enabled: enabled != null ? (enabled ? 1 : 0) : 1 });
+  return result.lastInsertRowid;
+}
+
+function updateSchoolHolidaySource(id, { name, color, enabled }) {
+  const db = getDb();
+  const fields = [];
+  const params = { id };
+  if (name != null)    { fields.push('name = @name');       params.name = name; }
+  if (color != null)   { fields.push('color = @color');     params.color = color; }
+  if (enabled != null) { fields.push('enabled = @enabled'); params.enabled = enabled ? 1 : 0; }
+  if (!fields.length) return;
+  fields.push("updated_at = datetime('now')");
+  db.prepare(`UPDATE school_holiday_sources SET ${fields.join(', ')} WHERE id = @id`).run(params);
+}
+
+function deleteSchoolHolidaySource(id) {
+  const db = getDb();
+  db.prepare('DELETE FROM school_holiday_dates WHERE source_id = ?').run(id);
+  db.prepare('DELETE FROM school_holiday_sources WHERE id = ?').run(id);
+}
+
+function getSchoolHolidayDates(sourceId) {
+  const db = getDb();
+  return db.prepare('SELECT * FROM school_holiday_dates WHERE source_id = ? ORDER BY start_date').all(sourceId);
+}
+
+function replaceSchoolHolidayDates(sourceId, dates) {
+  const db = getDb();
+  const tx = db.transaction(() => {
+    db.prepare('DELETE FROM school_holiday_dates WHERE source_id = ?').run(sourceId);
+    const insert = db.prepare(`
+      INSERT INTO school_holiday_dates (source_id, name, start_date, end_date)
+      VALUES (@source_id, @name, @start_date, @end_date)
+    `);
+    for (const d of dates) {
+      insert.run({ source_id: sourceId, name: d.name, start_date: d.start_date, end_date: d.end_date });
+    }
+  });
+  tx();
+}
+
+function getActiveSchoolHolidays() {
+  // Returns all holiday date ranges for enabled sources, with source colour
+  const db = getDb();
+  return db.prepare(`
+    SELECT d.id, d.source_id, d.name, d.start_date, d.end_date, s.color
+    FROM school_holiday_dates d
+    JOIN school_holiday_sources s ON s.id = d.source_id
+    WHERE s.enabled = 1
+    ORDER BY d.start_date
+  `).all();
+}
+
 // ───────── Cleanup ─────────
 function close() {
   if (_db) {
@@ -667,6 +794,14 @@ module.exports = {
   createReminder,
   updateReminder,
   deleteReminder,
+  getAllSchoolHolidaySources,
+  getSchoolHolidaySource,
+  createSchoolHolidaySource,
+  updateSchoolHolidaySource,
+  deleteSchoolHolidaySource,
+  getSchoolHolidayDates,
+  replaceSchoolHolidayDates,
+  getActiveSchoolHolidays,
   close,
   exportAllData,
   importAllData,
