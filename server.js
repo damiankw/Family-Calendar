@@ -1,6 +1,7 @@
 const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
+const os = require('os');
 const db = require('./db');
 const { syncCalendarSource } = require('./sync');
 
@@ -168,6 +169,26 @@ app.get('/api/events', (req, res) => {
 // Events for a specific date: GET /api/events/2026-02-26
 app.get('/api/events/:date', (req, res) => {
   res.json(db.getEventsByDate(req.params.date));
+});
+
+// GET /api/system/local-ips — local IPv4 addresses (excludes loopback, Tailscale, Docker, VMs)
+app.get('/api/system/local-ips', (_req, res) => {
+  const ifaces = os.networkInterfaces();
+  const ips = [];
+  for (const [name, addrs] of Object.entries(ifaces)) {
+    // Skip virtual/overlay interfaces by name
+    const nameLower = name.toLowerCase();
+    if (/tailscale|docker|veth|vmware|virtualbox|loopback|wsl|hyper-v/i.test(nameLower)) continue;
+    for (const addr of addrs) {
+      if (addr.family !== 'IPv4' || addr.internal) continue;
+      // Skip Tailscale CGNAT range 100.64.0.0/10
+      const first = parseInt(addr.address.split('.')[0], 10);
+      const second = parseInt(addr.address.split('.')[1], 10);
+      if (first === 100 && second >= 64 && second <= 127) continue;
+      ips.push(addr.address);
+    }
+  }
+  res.json(ips);
 });
 
 // Current weather: GET /api/weather/current

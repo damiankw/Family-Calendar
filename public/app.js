@@ -377,7 +377,7 @@
       for (const b of bdays) {
         const tag = document.createElement('span');
         tag.className = 'birthday-tag';
-        tag.innerHTML = `\uD83C\uDF82 ${b.name}`;
+        tag.innerHTML = `<span class="bday-icon"><i class="fa-solid fa-cake-candles"></i></span> ${b.name}`;
         header.appendChild(tag);
       }
     }
@@ -545,5 +545,16 @@
   // Initial load + recurring refresh
   refreshAll();
   setInterval(refreshAll, REFRESH_MS);
+
+  // Local IP — fetched once, doesn't change
+  (async () => {
+    try {
+      const ips = await (await fetch('/api/system/local-ips')).json();
+      const badge = document.getElementById('local-ip-badge');
+      if (badge && ips.length) {
+        badge.innerHTML = ips.map(ip => `<span>${ip}</span>`).join('<span style="color:rgba(255,255,255,0.1)"> · </span>');
+      }
+    } catch (e) { /* silent */ }
+  })();
 
 })();
