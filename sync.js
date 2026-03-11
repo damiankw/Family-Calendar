@@ -91,9 +91,19 @@ function getEventOccurrences(ev, rangeStart, rangeEnd) {
   if (ev.rrule) {
     try {
       const dates = ev.rrule.between(rangeStart, rangeEnd, true);
+      // Duration of event (for multi-day recurring events)
+      const durationMs = (ev.end && ev.start)
+        ? new Date(ev.end) - new Date(ev.start)
+        : 0;
       for (const d of dates) {
-        const isAllDay = !ev.start || isAllDayEvent(ev);
-        occurrences.push({ start: d, allDay: isAllDay });
+        if (durationMs > 86400000) {
+          // Multi-day recurring: expand each occurrence across its days
+          const occEnd = new Date(d.getTime() + durationMs);
+          addSingleOccurrence({ start: d, end: occEnd, datetype: ev.datetype }, rangeStart, rangeEnd, occurrences);
+        } else {
+          const isAllDay = !ev.start || isAllDayEvent(ev);
+          occurrences.push({ start: d, allDay: isAllDay });
+        }
       }
     } catch (e) {
       addSingleOccurrence(ev, rangeStart, rangeEnd, occurrences);
@@ -107,9 +117,39 @@ function getEventOccurrences(ev, rangeStart, rangeEnd) {
 
 function addSingleOccurrence(ev, rangeStart, rangeEnd, occurrences) {
   if (!ev.start) return;
-  const start = new Date(ev.start);
-  if (start >= rangeStart && start <= rangeEnd) {
-    occurrences.push({ start, allDay: isAllDayEvent(ev) });
+  const allDay = isAllDayEvent(ev);
+  const start  = new Date(ev.start);
+
+  // For multi-day events, expand into one occurrence per day
+  if (ev.end) {
+    const end = new Date(ev.end);
+    // All-day ICS end dates are exclusive (day after last day), so subtract 1ms for timed events
+    // For all-day events the end is exactly midnight of the day after — step by whole days
+    const lastDay = allDay
+      ? new Date(end.getTime() - 1)   // one ms before midnight = still the previous day
+      : end;
+
+    const dayMs = 86400000;
+    // Normalise start to midnight for day-stepping
+    const cursor = new Date(start);
+    if (allDay) {
+      cursor.setHours(0, 0, 0, 0);
+    }
+
+    // Expand: one entry per day from start up to and including lastDay
+    while (cursor <= lastDay) {
+      if (cursor >= rangeStart && cursor <= rangeEnd) {
+        occurrences.push({ start: new Date(cursor), allDay });
+      }
+      cursor.setTime(cursor.getTime() + dayMs);
+      // Safety: never expand more than 366 days from the original start
+      if (cursor.getTime() - start.getTime() > 366 * dayMs) break;
+    }
+  } else {
+    // Single-day (no end date)
+    if (start >= rangeStart && start <= rangeEnd) {
+      occurrences.push({ start, allDay });
+    }
   }
 }
 

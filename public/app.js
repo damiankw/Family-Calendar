@@ -620,10 +620,30 @@
   refreshAll();
   setInterval(refreshAll, REFRESH_MS);
 
-  // Local IP — fetched once, doesn't change
+  // Local IP — discovered via WebRTC (client-side, reflects this machine's IP, not the server's)
   (async () => {
     try {
-      const ips = await (await fetch('/api/system/local-ips')).json();
+      const ips = await new Promise(resolve => {
+        const found = new Set();
+        const pc = new RTCPeerConnection({ iceServers: [] });
+        pc.createDataChannel('');
+        pc.createOffer().then(o => pc.setLocalDescription(o)).catch(() => {});
+        pc.onicecandidate = e => {
+          if (!e || !e.candidate) {
+            pc.close();
+            resolve([...found]);
+            return;
+          }
+          // candidate string: "candidate:... <ip> <port> ..."
+          const parts = e.candidate.candidate.split(' ');
+          const ip = parts[4];
+          // Only IPv4, skip link-local (169.254.x.x)
+          if (ip && /^\d+\.\d+\.\d+\.\d+$/.test(ip) && !ip.startsWith('169.254.')) {
+            found.add(ip);
+          }
+        };
+        setTimeout(() => { try { pc.close(); } catch (_) {} resolve([...found]); }, 2000);
+      });
       const badge = document.getElementById('local-ip-badge');
       if (badge && ips.length) {
         badge.innerHTML = ips.map(ip => `<span>${ip}</span>`).join('<span style="color:rgba(255,255,255,0.1)"> · </span>');
