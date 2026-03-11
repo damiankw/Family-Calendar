@@ -23,4 +23,4 @@ jobs:
         with:
           context: .
           push: true
-          tags: ${{ secrets.DOCKERHUB_USERNAME }}/family-calendar:latest
+          tags: ${{ secrets.DOCKER_USER }}/family-calendar:latest
