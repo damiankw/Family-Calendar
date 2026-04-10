@@ -604,7 +604,7 @@ app.get('/api/geocode', async (req, res) => {
 // GET /api/backup — export all data as JSON
 app.get('/api/backup', requireAuth, (_req, res) => {
   const payload = db.exportAllData();
-  res.setHeader('Content-Disposition', 'attachment; filename="familydash-backup.json"');
+  res.setHeader('Content-Disposition', 'attachment; filename="family-calendar-backup.json"');
   res.json(payload);
 });
 
@@ -643,7 +643,7 @@ app.get('/', (_req, res) => {
 app.use(express.static(PUBLIC_DIR));
 
 app.listen(PORT, () => {
-  console.log(`FamilyDash running at http://localhost:${PORT}`);
+  console.log(`Family Calendar running at http://localhost:${PORT}`);
 
   // ───────── Embedded worker loop ─────────
   // Runs the same fetch cycle that worker.js did, but inside the server

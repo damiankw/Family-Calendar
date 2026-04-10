@@ -1,4 +1,4 @@
-// ─── FamilyDash — app.js ───
+// ─── Family Calendar — app.js ───
 // Front-end reads everything from the API (backed by SQLite).
 // The worker.js process keeps the DB populated independently.
 

@@ -1,5 +1,5 @@
 {
-  "name": "familydash",
+  "name": "family-calendar",
   "version": "1.0.0",
   "main": "server.js",
   "scripts": {
@@ -10,7 +10,7 @@
   "keywords": ["family", "calendar", "dashboard", "weather", "birthdays", "reminders"],
   "author": "",
   "license": "ISC",
-  "description": "FamilyDash - A family dashboard with calendar, weather, birthdays, and reminders",
+  "description": "Family Calendar - A family dashboard with calendar, weather, birthdays, and reminders",
   "dependencies": {
     "better-sqlite3": "^12.6.2",
     "express": "^5.2.1",

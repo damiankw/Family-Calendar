@@ -1,6 +1,6 @@
-# FamilyDash
+# Family Calendar
 
-FamilyDash is a family dashboard for wall-mounted displays. It combines a calendar wallboard, weather, birthdays, and reminders with a clean admin interface.
+Family Calendar is a family dashboard for wall-mounted displays. It combines a calendar wallboard, weather, birthdays, and reminders with a clean admin interface.
 
 ## ✨ Features
 
@@ -41,7 +41,7 @@ Environment variables:
 | Variable | Default | Description |
 |---------|---------|-------------|
 | `PORT` | `3000` | Server port |
-| `DB_PATH` | `data/familydash.db` | SQLite database path |
+| `DB_PATH` | `data/family-calendar.db` | SQLite database path |
 
 Data is stored in a SQLite database in the `data/` directory by default.
 
@@ -60,7 +60,7 @@ Weather uses Open-Meteo. Once you set your location in Admin, the background wor
 
 The Admin UI supports exporting and importing data as JSON.
 
-Backup file names use the `familydash-backup-*.json` format.
+Backup file names use the `family-calendar-backup-*.json` format.
 
 ## 🐳 Docker
 
@@ -78,7 +78,7 @@ volumes:
 The database location inside the container is:
 
 ```
-DB_PATH=/data/familydash.db
+DB_PATH=/data/family-calendar.db
 ```
 
 ## 🛠️ Development Notes
