@@ -292,7 +292,7 @@
   }
 
   async function fetchTodayTomorrow() {
-    const numDays = isMobile() ? 7 : 2;
+    const numDays = isMobile() ? 7 : 4;
     buildDayGroups(numDays);
 
     const now = new Date();

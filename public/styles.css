@@ -326,7 +326,7 @@ html, body {
   display: flex;
   flex-direction: column;
   gap: 1.5vh;
-  overflow-y: auto;
+  overflow: hidden;
   padding-right: 0.3vw;
 }
 
@@ -714,7 +714,7 @@ html, body {
   /* Events section — scrollable list for the week */
   .events {
     gap: 16px;
-    overflow-y: visible;
+    overflow: hidden;
     padding-right: 0;
   }
 
