@@ -6,6 +6,28 @@
   'use strict';
 
   const REFRESH_MS = 60 * 1000; // 1 minute
+  const APP_VERSION = document.querySelector('meta[name="app-version"]')?.content || '';
+  let updateReloadPending = false;
+
+  async function checkForAppUpdate() {
+    if (!APP_VERSION || updateReloadPending) return false;
+
+    try {
+      const res = await fetch('/api/client/version', { cache: 'no-store' });
+      if (!res.ok) return false;
+
+      const data = await res.json();
+      if (!data.version || data.version === APP_VERSION) return false;
+
+      updateReloadPending = true;
+      const url = new URL(window.location.href);
+      url.searchParams.set('appv', data.version);
+      window.location.replace(url.toString());
+      return true;
+    } catch (_) {
+      return false;
+    }
+  }
 
   // ───────── Clock ─────────
   function updateClock() {
@@ -610,6 +632,7 @@
 
   // ───────── Refresh cycle ─────────
   async function refreshAll() {
+    if (await checkForAppUpdate()) return;
     await fetchWeatherSettings();
     await Promise.all([fetchEvents(), fetchWeather(), fetchBirthdays(), fetchReminders(), fetchAurora(), fetchSchoolHolidays()]);
     buildCalendar();

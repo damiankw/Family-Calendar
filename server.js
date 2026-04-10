@@ -2,12 +2,31 @@ const express = require('express');
 const path = require('path');
 const crypto = require('crypto');
 const os = require('os');
+const fs = require('fs');
 const db = require('./db');
 const { syncCalendarSource } = require('./sync');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 const SESSION_SECRET = process.env.SESSION_SECRET || crypto.randomBytes(32).toString('hex');
+const PUBLIC_DIR = path.join(__dirname, 'public');
+const APP_VERSION_FILES = [
+  'package.json',
+  'server.js',
+  'db.js',
+  'sync.js',
+  'worker.js',
+  'public/index.html',
+  'public/app.js',
+  'public/styles.css',
+  'public/admin.html',
+  'public/admin.js',
+  'public/admin.css',
+  'public/setup.html',
+  'public/setup.js',
+  'public/setup.css',
+  'public/login.html',
+];
 
 function dateInTimeZone(timeZone) {
   if (!timeZone) return new Date().toISOString().slice(0, 10);
@@ -22,6 +41,31 @@ function dateInTimeZone(timeZone) {
   const parts = formatter.formatToParts(new Date());
   const values = Object.fromEntries(parts.map(part => [part.type, part.value]));
   return `${values.year}-${values.month}-${values.day}`;
+}
+
+function getAppVersion() {
+  let latestMtimeMs = 0;
+
+  for (const relativePath of APP_VERSION_FILES) {
+    try {
+      const filePath = path.join(__dirname, relativePath);
+      const { mtimeMs } = fs.statSync(filePath);
+      latestMtimeMs = Math.max(latestMtimeMs, mtimeMs);
+    } catch (_) {
+      // Ignore missing files so the app can still boot during development.
+    }
+  }
+
+  return latestMtimeMs ? Math.floor(latestMtimeMs).toString(36) : 'dev';
+}
+
+function renderHtmlPage(res, fileName) {
+  const version = getAppVersion();
+  const filePath = path.join(PUBLIC_DIR, fileName);
+  const html = fs.readFileSync(filePath, 'utf8').replace(/__APP_VERSION__/g, version);
+
+  res.setHeader('Cache-Control', 'no-store');
+  res.type('html').send(html);
 }
 
 app.use(express.json({ limit: '10mb' }));
@@ -204,6 +248,12 @@ app.get('/api/system/local-ips', (_req, res) => {
     }
   }
   res.json(ips);
+});
+
+// GET /api/client/version — current app version for long-lived clients
+app.get('/api/client/version', (_req, res) => {
+  res.setHeader('Cache-Control', 'no-store');
+  res.json({ version: getAppVersion() });
 });
 
 // Current weather: GET /api/weather/current
@@ -571,21 +621,26 @@ app.post('/api/restore', requireAuth, (req, res) => {
 
 // ───────── Admin panel ─────────
 app.get('/admin', requireAuth, (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'admin.html'));
+  renderHtmlPage(res, 'admin.html');
 });
 
 // ───────── Login page ─────────
 app.get('/login', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'login.html'));
+  renderHtmlPage(res, 'login.html');
 });
 
 // ───────── Setup page ─────────
 app.get('/setup', (_req, res) => {
-  res.sendFile(path.join(__dirname, 'public', 'setup.html'));
+  renderHtmlPage(res, 'setup.html');
+});
+
+// ───────── Dashboard page ─────────
+app.get('/', (_req, res) => {
+  renderHtmlPage(res, 'index.html');
 });
 
 // ───────── Static files ─────────
-app.use(express.static(path.join(__dirname, 'public')));
+app.use(express.static(PUBLIC_DIR));
 
 app.listen(PORT, () => {
   console.log(`FamilyDash running at http://localhost:${PORT}`);
