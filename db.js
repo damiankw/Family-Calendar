@@ -4,7 +4,17 @@ const path = require('path');
 const fs = require('fs');
 const crypto = require('crypto');
 
-const DB_PATH = process.env.DB_PATH || path.join(__dirname, 'data', 'family-calendar.db');
+function resolveDbPath() {
+  if (process.env.DB_PATH) return process.env.DB_PATH;
+
+  const dataDir = path.join(__dirname, 'data');
+  const legacyDbPath = path.join(dataDir, 'familydash.db');
+  const defaultDbPath = path.join(dataDir, 'family-calendar.db');
+
+  return fs.existsSync(legacyDbPath) ? legacyDbPath : defaultDbPath;
+}
+
+const DB_PATH = resolveDbPath();
 
 let _db;
 

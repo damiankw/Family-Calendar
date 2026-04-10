@@ -4,6 +4,35 @@
 const db = require('./db');
 const ical = require('node-ical');
 
+function getFormatterParts(formatter, date) {
+  const parts = formatter.formatToParts(date);
+  return Object.fromEntries(parts.map(part => [part.type, part.value]));
+}
+
+function formatDateInTimeZone(date, timeZone) {
+  const formatter = new Intl.DateTimeFormat('en-CA', {
+    timeZone,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  });
+
+  const values = getFormatterParts(formatter, date);
+  return `${values.year}-${values.month}-${values.day}`;
+}
+
+function formatTimeInTimeZone(date, timeZone) {
+  const formatter = new Intl.DateTimeFormat('en-GB', {
+    timeZone,
+    hour: '2-digit',
+    minute: '2-digit',
+    hour12: false,
+  });
+
+  const values = getFormatterParts(formatter, date);
+  return `${values.hour}:${values.minute}`;
+}
+
 // ── Sync a single calendar source by ID ──
 async function syncCalendarSource(id) {
   const src = db.getCalendarSource(id);
@@ -44,6 +73,7 @@ async function syncAllCalendars() {
 async function syncIcsCalendar(src, config, sourceKey) {
   const url = config.url;
   if (!url) throw new Error(`No URL configured for "${src.name}"`);
+  const appTimeZone = db.getSetting('weather_tz') || undefined;
 
   const events = await ical.async.fromURL(url);
   let count = 0;
@@ -61,8 +91,8 @@ async function syncIcsCalendar(src, config, sourceKey) {
     const occurrences = getEventOccurrences(ev, rangeStart, rangeEnd);
 
     for (const occ of occurrences) {
-      const dateStr = formatDate(occ.start);
-      const timeStr = occ.allDay ? null : formatTimeHHMM(occ.start);
+      const dateStr = formatDate(occ.start, appTimeZone, occ.allDay);
+      const timeStr = occ.allDay ? null : formatTimeHHMM(occ.start, appTimeZone);
       const title   = icalText(ev.summary) || '(No title)';
 
       db.upsertEvent({
@@ -162,16 +192,29 @@ function isAllDayEvent(ev) {
          ev.end && (new Date(ev.end) - s) % (86400000) === 0;
 }
 
-function formatDate(d) {
+function formatDate(d, timeZone, isAllDay) {
   const dt = new Date(d);
+
+  if (isAllDay) {
+    const y  = dt.getUTCFullYear();
+    const m  = String(dt.getUTCMonth() + 1).padStart(2, '0');
+    const dd = String(dt.getUTCDate()).padStart(2, '0');
+    return `${y}-${m}-${dd}`;
+  }
+
+  if (timeZone) return formatDateInTimeZone(dt, timeZone);
+
   const y  = dt.getFullYear();
   const m  = String(dt.getMonth() + 1).padStart(2, '0');
   const dd = String(dt.getDate()).padStart(2, '0');
   return `${y}-${m}-${dd}`;
 }
 
-function formatTimeHHMM(d) {
+function formatTimeHHMM(d, timeZone) {
   const dt = new Date(d);
+
+  if (timeZone) return formatTimeInTimeZone(dt, timeZone);
+
   const h  = String(dt.getHours()).padStart(2, '0');
   const m  = String(dt.getMinutes()).padStart(2, '0');
   return `${h}:${m}`;
